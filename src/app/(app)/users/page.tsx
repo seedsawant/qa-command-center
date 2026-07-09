@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { InviteUserDialog } from "@/components/users/invite-user-dialog"
+import { CreateUserDialog } from "@/components/users/create-user-dialog"
 import { UsersTable } from "@/components/users/users-table"
 import { canInviteUsers } from "@/lib/permissions"
 import { requireProfile } from "@/lib/supabase/require-profile"
@@ -26,7 +26,7 @@ export default async function UsersPage() {
             Manage roles and access across QA Command Center.
           </p>
         </div>
-        <InviteUserDialog />
+        <CreateUserDialog />
       </div>
       <UsersTable
         users={(users ?? []).map((u) => ({

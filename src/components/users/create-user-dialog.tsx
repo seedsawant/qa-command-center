@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { PlusIcon } from "lucide-react"
 import { z } from "zod"
 
-import { inviteUser } from "@/app/(app)/users/actions"
+import { createUser } from "@/app/(app)/users/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -33,15 +33,16 @@ import type { AppRole } from "@/types/database.types"
 
 const ROLE_VALUES: [AppRole, ...AppRole[]] = ["producer", "qa_lead", "tester", "viewer"]
 
-const inviteSchema = z.object({
+const createUserFormSchema = z.object({
   email: z.string().email("Enter a valid email address"),
   fullName: z.string().max(120).optional(),
   role: z.enum(ROLE_VALUES),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 })
 
-type InviteValues = z.infer<typeof inviteSchema>
+type CreateUserFormValues = z.infer<typeof createUserFormSchema>
 
-export function InviteUserDialog() {
+export function CreateUserDialog() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -52,21 +53,21 @@ export function InviteUserDialog() {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<InviteValues>({
-    resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "", fullName: "", role: "tester" },
+  } = useForm<CreateUserFormValues>({
+    resolver: zodResolver(createUserFormSchema),
+    defaultValues: { email: "", fullName: "", role: "tester", password: "" },
   })
 
-  async function onSubmit(values: InviteValues) {
+  async function onSubmit(values: CreateUserFormValues) {
     setFormError(null)
-    const result = await inviteUser(values)
+    const result = await createUser(values)
 
     if (result?.error) {
       setFormError(result.error)
       return
     }
 
-    toast.success("Invite sent")
+    toast.success("Account created — share the password with them directly")
     reset()
     setOpen(false)
     router.refresh()
@@ -76,13 +77,14 @@ export function InviteUserDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
         <PlusIcon />
-        Invite user
+        Add user
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite a user</DialogTitle>
+          <DialogTitle>Add a user</DialogTitle>
           <DialogDescription>
-            They&apos;ll get an email to set their password and sign in.
+            Set their email and password directly, then share the password with them
+            out of band (Slack, in person, etc.).
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -99,6 +101,18 @@ export function InviteUserDialog() {
                 <FieldLabel htmlFor="fullName">Full name</FieldLabel>
                 <Input id="fullName" placeholder="Optional" {...register("fullName")} />
                 <FieldError errors={[errors.fullName]} />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <Input
+                  id="password"
+                  type="text"
+                  placeholder="At least 8 characters"
+                  {...register("password")}
+                />
+                <FieldError errors={[errors.password]} />
               </FieldContent>
             </Field>
             <Field>
@@ -129,7 +143,7 @@ export function InviteUserDialog() {
           </FieldGroup>
           <DialogFooter className="mt-4">
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Sending..." : "Send invite"}
+              {isSubmitting ? "Creating..." : "Create account"}
             </Button>
           </DialogFooter>
         </form>

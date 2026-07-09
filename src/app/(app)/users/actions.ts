@@ -10,36 +10,38 @@ import type { AppRole } from "@/types/database.types"
 
 const ROLE_VALUES: [AppRole, ...AppRole[]] = ["producer", "qa_lead", "tester", "viewer"]
 
-const inviteSchema = z.object({
+const createUserSchema = z.object({
   email: z.string().email("Enter a valid email address"),
   fullName: z.string().max(120).optional(),
   role: z.enum(ROLE_VALUES),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 })
 
-export type InviteInput = z.infer<typeof inviteSchema>
+export type CreateUserInput = z.infer<typeof createUserSchema>
 export type ActionResult = { error?: string }
 
-export async function inviteUser(input: InviteInput): Promise<ActionResult> {
+export async function createUser(input: CreateUserInput): Promise<ActionResult> {
   const { profile } = await requireProfile()
 
   if (!canInviteUsers(profile.role)) {
-    return { error: "Only producers can invite users." }
+    return { error: "Only producers can add users." }
   }
 
-  const parsed = inviteSchema.safeParse(input)
+  const parsed = createUserSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
   }
 
   const admin = createAdminClient()
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
 
-  const { error } = await admin.auth.admin.inviteUserByEmail(parsed.data.email, {
-    data: {
+  const { error } = await admin.auth.admin.createUser({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    email_confirm: true,
+    user_metadata: {
       role: parsed.data.role,
       full_name: parsed.data.fullName || undefined,
     },
-    redirectTo: `${siteUrl}/auth/callback?next=/auth/set-password`,
   })
 
   if (error) {

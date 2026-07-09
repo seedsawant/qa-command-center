@@ -7,7 +7,7 @@ export default function LoginPage() {
         <div className="space-y-1 text-center">
           <h1 className="text-xl font-semibold">QA Command Center</h1>
           <p className="text-sm text-muted-foreground">
-            Sign in with the account your team invited you with.
+            Sign in with the account a producer set up for you.
           </p>
         </div>
         <LoginForm />
