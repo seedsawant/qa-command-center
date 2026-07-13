@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import ExcelJS from "exceljs"
+import Papa from "papaparse"
 import { z } from "zod"
 
+import { IMPORT_ROW_CAP } from "@/lib/bulk-import"
 import { canManageTestCases } from "@/lib/permissions"
 import { requireProfile } from "@/lib/supabase/require-profile"
 import type {
@@ -271,4 +274,193 @@ export async function restoreTestCaseVersion(
     },
     `Restored from version ${version.version_number}`
   )
+}
+
+function cellToString(value: ExcelJS.CellValue): string {
+  if (value == null) return ""
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === "object") {
+    if ("richText" in value) return value.richText.map((t) => t.text).join("")
+    if ("text" in value) return String(value.text)
+    if ("result" in value) return String(value.result ?? "")
+  }
+  return String(value)
+}
+
+export type ParsedFile = { headers: string[]; rows: string[][] }
+
+export async function parseImportFile(
+  formData: FormData
+): Promise<ParsedFile | { error: string }> {
+  const { profile } = await requireProfile()
+
+  if (!canManageTestCases(profile.role)) {
+    return { error: "Only producers and QA leads can import test cases." }
+  }
+
+  const file = formData.get("file")
+  if (!(file instanceof File)) {
+    return { error: "No file provided" }
+  }
+
+  const name = file.name.toLowerCase()
+  const buffer = Buffer.from(await file.arrayBuffer())
+
+  let allRows: string[][]
+
+  try {
+    if (name.endsWith(".csv")) {
+      const parsed = Papa.parse<string[]>(buffer.toString("utf-8"), { skipEmptyLines: true })
+      if (parsed.errors.length) {
+        return { error: parsed.errors[0].message }
+      }
+      allRows = parsed.data
+    } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+      const workbook = new ExcelJS.Workbook()
+      // exceljs's bundled types predate Node's newer generic Buffer<T>; the
+      // runtime value is a perfectly normal Buffer.
+      await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
+      const worksheet = workbook.worksheets[0]
+      if (!worksheet) {
+        return { error: "No worksheet found in file" }
+      }
+
+      allRows = []
+      worksheet.eachRow((row) => {
+        const values = (row.values as ExcelJS.CellValue[]).slice(1).map(cellToString)
+        if (values.some((v) => v !== "")) {
+          allRows.push(values)
+        }
+      })
+    } else {
+      return { error: "Unsupported file type. Upload a .csv, .xlsx, or .xls file." }
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to parse file" }
+  }
+
+  const [headers, ...rows] = allRows
+
+  if (!headers?.length) {
+    return { error: "File is empty" }
+  }
+
+  if (rows.length > IMPORT_ROW_CAP) {
+    return {
+      error: `File has ${rows.length} rows; the limit is ${IMPORT_ROW_CAP} per import. Split it into smaller files.`,
+    }
+  }
+
+  return { headers, rows }
+}
+
+export async function bulkImportTestCases(
+  projectId: string,
+  projectSlug: string,
+  rows: TestCaseInput[]
+): Promise<{ imported: number; skippedDuplicates: number; error?: string }> {
+  const { supabase, profile } = await requireProfile()
+
+  if (!canManageTestCases(profile.role)) {
+    return { imported: 0, skippedDuplicates: 0, error: "Only producers and QA leads can import test cases." }
+  }
+
+  if (rows.length === 0) {
+    return { imported: 0, skippedDuplicates: 0, error: "No rows to import." }
+  }
+
+  if (rows.length > IMPORT_ROW_CAP) {
+    return {
+      imported: 0,
+      skippedDuplicates: 0,
+      error: `${rows.length} rows exceeds the ${IMPORT_ROW_CAP} row limit per import.`,
+    }
+  }
+
+  const parsedRows: TestCaseInput[] = []
+  for (const row of rows) {
+    const parsed = testCaseSchema.safeParse(row)
+    if (!parsed.success) {
+      return {
+        imported: 0,
+        skippedDuplicates: 0,
+        error: `Row "${row.title}": ${parsed.error.issues[0]?.message ?? "invalid"}`,
+      }
+    }
+    parsedRows.push(parsed.data)
+  }
+
+  // Defensive re-check against current titles (covers a race between two
+  // concurrent imports); the client already filtered these out in the
+  // common case.
+  const { data: existing } = await supabase
+    .from("test_cases")
+    .select("title")
+    .eq("project_id", projectId)
+
+  const existingTitles = new Set((existing ?? []).map((t) => t.title.toLowerCase()))
+  const seenTitles = new Set<string>()
+  const toInsert: TestCaseInput[] = []
+  let skippedDuplicates = 0
+
+  for (const row of parsedRows) {
+    const key = row.title.toLowerCase()
+    if (existingTitles.has(key) || seenTitles.has(key)) {
+      skippedDuplicates += 1
+      continue
+    }
+    seenTitles.add(key)
+    toInsert.push(row)
+  }
+
+  if (toInsert.length === 0) {
+    return { imported: 0, skippedDuplicates }
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("test_cases")
+    .insert(
+      toInsert.map((row) => ({
+        project_id: projectId,
+        title: row.title,
+        description: row.description || null,
+        preconditions: row.preconditions || null,
+        expected_result: row.expectedResult || null,
+        priority: row.priority,
+        category: row.category,
+        platform: row.platform || null,
+        tags: row.tags ?? [],
+        owner_id: row.ownerId || null,
+        estimated_minutes: row.estimatedMinutes || null,
+        created_by: profile.id,
+      }))
+    )
+    .select()
+
+  if (error) {
+    return { imported: 0, skippedDuplicates, error: error.message }
+  }
+
+  await supabase.from("test_case_versions").insert(
+    inserted.map((testCase) => ({
+      test_case_id: testCase.id,
+      version_number: 1,
+      title: testCase.title,
+      description: testCase.description,
+      preconditions: testCase.preconditions,
+      expected_result: testCase.expected_result,
+      priority: testCase.priority,
+      category: testCase.category,
+      platform: testCase.platform,
+      tags: testCase.tags,
+      owner_id: testCase.owner_id,
+      estimated_minutes: testCase.estimated_minutes,
+      changed_by: profile.id,
+      change_note: "Imported",
+    }))
+  )
+
+  revalidatePath(`/projects/${projectSlug}/test-case-library`)
+
+  return { imported: inserted.length, skippedDuplicates }
 }

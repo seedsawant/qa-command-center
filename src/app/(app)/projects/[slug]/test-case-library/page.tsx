@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { PlusIcon } from "lucide-react"
+import { PlusIcon, UploadIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardTitle } from "@/components/ui/card"
@@ -40,10 +40,16 @@ export default async function TestCaseLibraryPage({
           </p>
         </div>
         {canManage && (
-          <Button render={<Link href={`/projects/${slug}/test-case-library/new`} />}>
-            <PlusIcon />
-            New test case
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" render={<Link href={`/projects/${slug}/test-case-library/import`} />}>
+              <UploadIcon />
+              Bulk import
+            </Button>
+            <Button render={<Link href={`/projects/${slug}/test-case-library/new`} />}>
+              <PlusIcon />
+              New test case
+            </Button>
+          </div>
         )}
       </div>
 
