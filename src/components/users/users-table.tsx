@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { setUserActive, updateUserRole } from "@/app/(app)/users/actions"
+import { setUserActive, updateUserRole } from "@/app/(app)/(workspace)/users/actions"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -105,6 +105,7 @@ export function UsersTable({
               <TableCell className="text-muted-foreground">{user.email}</TableCell>
               <TableCell>
                 <Select
+                  items={ROLE_LABELS}
                   value={user.role}
                   onValueChange={(value) => handleRoleChange(user.id, value as AppRole)}
                   disabled={isSelf || pendingId === user.id}

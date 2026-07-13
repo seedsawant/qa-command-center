@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { PlusIcon } from "lucide-react"
 import { z } from "zod"
 
-import { createUser } from "@/app/(app)/users/actions"
+import { createUser } from "@/app/(app)/(workspace)/users/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -122,7 +122,7 @@ export function CreateUserDialog() {
                   control={control}
                   name="role"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select items={ROLE_LABELS} value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger id="role" className="w-full">
                         <SelectValue />
                       </SelectTrigger>

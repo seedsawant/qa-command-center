@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { canEditProjectSettings, ROLE_LABELS } from "@/lib/permissions"
+import { getProjectBySlug } from "@/lib/supabase/get-project"
 import { requireProfile } from "@/lib/supabase/require-profile"
 
 function getInitials(name: string) {
@@ -26,8 +27,7 @@ export default async function ProjectPage({
 }) {
   const { slug } = await params
   const { supabase, profile } = await requireProfile()
-
-  const { data: project } = await supabase.from("projects").select("*").eq("slug", slug).single()
+  const project = await getProjectBySlug(slug)
 
   if (!project) {
     notFound()

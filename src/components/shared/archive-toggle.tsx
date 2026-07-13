@@ -5,16 +5,19 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import type { ProjectStatus } from "@/types/database.types"
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
 export function ArchiveToggle({
-  projectId,
   status,
   action,
+  label = "item",
 }: {
-  projectId: string
-  status: ProjectStatus
-  action: (projectId: string, status: ProjectStatus) => Promise<{ error?: string }>
+  status: "active" | "archived"
+  action: (status: "active" | "archived") => Promise<{ error?: string }>
+  label?: string
 }) {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
@@ -23,7 +26,7 @@ export function ArchiveToggle({
   async function handleClick() {
     setIsPending(true)
     const nextStatus = isArchived ? "active" : "archived"
-    const result = await action(projectId, nextStatus)
+    const result = await action(nextStatus)
     setIsPending(false)
 
     if (result?.error) {
@@ -31,17 +34,17 @@ export function ArchiveToggle({
       return
     }
 
-    toast.success(isArchived ? "Project restored" : "Project archived")
+    toast.success(capitalize(`${label} ${isArchived ? "restored" : "archived"}`))
     router.refresh()
   }
 
   return (
     <div className="flex items-center justify-between">
       <p className="text-sm text-muted-foreground">
-        This project is currently <span className="font-medium">{status}</span>.
+        This {label} is currently <span className="font-medium">{status}</span>.
       </p>
       <Button variant={isArchived ? "default" : "outline"} disabled={isPending} onClick={handleClick}>
-        {isPending ? "Saving..." : isArchived ? "Restore project" : "Archive project"}
+        {isPending ? "Saving..." : capitalize(`${isArchived ? "restore" : "archive"} ${label}`)}
       </Button>
     </div>
   )

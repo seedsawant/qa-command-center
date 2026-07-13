@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation"
 
 import { addMember, removeMember, setProjectStatus, updateProject } from "@/app/(app)/projects/actions"
-import { ArchiveToggle } from "@/components/projects/archive-toggle"
+import { ArchiveToggle } from "@/components/shared/archive-toggle"
 import { MemberManager } from "@/components/projects/member-manager"
 import { ProjectForm } from "@/components/projects/project-form"
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { canEditProjectSettings } from "@/lib/permissions"
+import { getProjectBySlug } from "@/lib/supabase/get-project"
 import { requireProfile } from "@/lib/supabase/require-profile"
 
 export default async function ProjectSettingsPage({
@@ -27,7 +28,7 @@ export default async function ProjectSettingsPage({
     redirect(`/projects/${slug}`)
   }
 
-  const { data: project } = await supabase.from("projects").select("*").eq("slug", slug).single()
+  const project = await getProjectBySlug(slug)
 
   if (!project) {
     notFound()
@@ -101,9 +102,9 @@ export default async function ProjectSettingsPage({
         <CardContent>
           <Separator className="mb-4" />
           <ArchiveToggle
-            projectId={project.id}
             status={project.status}
-            action={setProjectStatus}
+            action={setProjectStatus.bind(null, project.id)}
+            label="project"
           />
         </CardContent>
       </Card>
