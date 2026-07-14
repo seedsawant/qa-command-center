@@ -28,3 +28,7 @@ export function canInviteUsers(role: AppRole) {
 export function canManageTestCases(role: AppRole) {
   return role === "producer" || role === "qa_lead"
 }
+
+export function canLogTestResults(role: AppRole) {
+  return role !== "viewer"
+}

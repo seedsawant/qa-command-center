@@ -2,6 +2,7 @@ import type {
   TestCaseCategory,
   TestCasePlatform,
   TestCasePriority,
+  TestCaseRunResult,
 } from "@/types/database.types"
 
 export const PRIORITY_LABELS: Record<TestCasePriority, string> = {
@@ -84,4 +85,36 @@ export function diffTestCaseVersions(older: VersionLike, newer: VersionLike): st
   return DIFF_FIELDS.filter(
     ({ key }) => JSON.stringify(older[key]) !== JSON.stringify(newer[key])
   ).map(({ label }) => label)
+}
+
+export const RESULT_LABELS: Record<TestCaseRunResult, string> = {
+  passed: "Pass",
+  failed: "Fail",
+  blocked: "Blocked",
+}
+
+export const RESULT_VALUES: TestCaseRunResult[] = ["passed", "failed", "blocked"]
+
+export type RunStats = {
+  passed: number
+  failed: number
+  blocked: number
+  total: number
+  /** Over passed+failed only — a blocked run is neither a pass nor a fail. */
+  passRate: number | null
+}
+
+export function computeRunStats(runs: { result: TestCaseRunResult }[]): RunStats {
+  const passed = runs.filter((r) => r.result === "passed").length
+  const failed = runs.filter((r) => r.result === "failed").length
+  const blocked = runs.filter((r) => r.result === "blocked").length
+  const decisive = passed + failed
+
+  return {
+    passed,
+    failed,
+    blocked,
+    total: runs.length,
+    passRate: decisive > 0 ? Math.round((passed / decisive) * 100) : null,
+  }
 }

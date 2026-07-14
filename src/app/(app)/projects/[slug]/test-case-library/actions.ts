@@ -7,12 +7,14 @@ import Papa from "papaparse"
 import { z } from "zod"
 
 import { IMPORT_ROW_CAP } from "@/lib/bulk-import"
-import { canManageTestCases } from "@/lib/permissions"
+import { canLogTestResults, canManageTestCases } from "@/lib/permissions"
+import { RESULT_VALUES } from "@/lib/test-cases"
 import { requireProfile } from "@/lib/supabase/require-profile"
 import type {
   TestCaseCategory,
   TestCasePlatform,
   TestCasePriority,
+  TestCaseRunResult,
 } from "@/types/database.types"
 
 const PRIORITY_VALUES: [TestCasePriority, ...TestCasePriority[]] = [
@@ -463,4 +465,43 @@ export async function bulkImportTestCases(
   revalidatePath(`/projects/${projectSlug}/test-case-library`)
 
   return { imported: inserted.length, skippedDuplicates }
+}
+
+const logTestRunSchema = z.object({
+  result: z.enum(RESULT_VALUES as [TestCaseRunResult, ...TestCaseRunResult[]]),
+  buildLabel: z.string().min(1, "Build label is required").max(100),
+})
+
+export type LogTestRunInput = z.infer<typeof logTestRunSchema>
+
+export async function logTestRun(
+  testCaseId: string,
+  projectSlug: string,
+  input: LogTestRunInput
+): Promise<ActionResult> {
+  const { supabase, profile } = await requireProfile()
+
+  if (!canLogTestResults(profile.role)) {
+    return { error: "Viewers can't log test results." }
+  }
+
+  const parsed = logTestRunSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" }
+  }
+
+  const { error } = await supabase.from("test_case_runs").insert({
+    test_case_id: testCaseId,
+    result: parsed.data.result,
+    build_label: parsed.data.buildLabel,
+    tested_by: profile.id,
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  revalidatePath(`/projects/${projectSlug}/test-case-library`)
+  revalidatePath(`/projects/${projectSlug}/test-case-library/${testCaseId}`)
+  return {}
 }

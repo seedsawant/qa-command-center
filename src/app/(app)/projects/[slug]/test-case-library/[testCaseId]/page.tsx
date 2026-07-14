@@ -1,17 +1,19 @@
 import { notFound } from "next/navigation"
 
 import {
+  logTestRun,
   restoreTestCaseVersion,
   setTestCaseStatus,
   updateTestCase,
 } from "@/app/(app)/projects/[slug]/test-case-library/actions"
 import { ArchiveToggle } from "@/components/shared/archive-toggle"
 import { TestCaseForm } from "@/components/test-cases/test-case-form"
+import { TestRunLog } from "@/components/test-cases/test-run-log"
 import { VersionHistory } from "@/components/test-cases/version-history"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { canManageTestCases } from "@/lib/permissions"
+import { canLogTestResults, canManageTestCases } from "@/lib/permissions"
 import { formatCaseNumber } from "@/lib/test-cases"
 import { getProjectBySlug } from "@/lib/supabase/get-project"
 import { requireProfile } from "@/lib/supabase/require-profile"
@@ -39,7 +41,7 @@ export default async function TestCaseDetailPage({
     notFound()
   }
 
-  const [{ data: members }, { data: versions }] = await Promise.all([
+  const [{ data: members }, { data: versions }, { data: runs }] = await Promise.all([
     supabase
       .from("project_members")
       .select("user_id, profiles!project_members_user_id_fkey(full_name, email)")
@@ -49,6 +51,11 @@ export default async function TestCaseDetailPage({
       .select("*, profiles!test_case_versions_changed_by_fkey(full_name, email)")
       .eq("test_case_id", testCaseId)
       .order("version_number", { ascending: false }),
+    supabase
+      .from("test_case_runs")
+      .select("*, profiles!test_case_runs_tested_by_fkey(full_name, email)")
+      .eq("test_case_id", testCaseId)
+      .order("tested_at", { ascending: false }),
   ])
 
   const formattedMembers = (members ?? [])
@@ -63,7 +70,13 @@ export default async function TestCaseDetailPage({
     changedByName: v.profiles?.full_name ?? v.profiles?.email ?? "Unknown",
   }))
 
+  const formattedRuns = (runs ?? []).map((r) => ({
+    ...r,
+    testedByName: r.profiles?.full_name ?? r.profiles?.email ?? "Unknown",
+  }))
+
   const canManage = canManageTestCases(profile.role)
+  const canLog = canLogTestResults(profile.role)
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6">
@@ -116,6 +129,12 @@ export default async function TestCaseDetailPage({
           </CardContent>
         </Card>
       )}
+
+      <TestRunLog
+        runs={formattedRuns}
+        canLog={canLog}
+        logAction={logTestRun.bind(null, testCaseId, slug)}
+      />
 
       <VersionHistory
         versions={formattedVersions}

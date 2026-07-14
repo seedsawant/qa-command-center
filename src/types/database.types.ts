@@ -11,6 +11,7 @@ export type TestCaseCategory =
   | "uat"
   | "automation"
 export type TestCasePlatform = "android" | "ios" | "web" | "api"
+export type TestCaseRunResult = "passed" | "failed" | "blocked"
 
 export type Database = {
   public: {
@@ -221,6 +222,37 @@ export type Database = {
           },
         ]
       }
+      test_case_runs: {
+        Row: {
+          id: string
+          test_case_id: string
+          result: TestCaseRunResult
+          build_label: string
+          tested_by: string
+          tested_at: string
+        }
+        Insert: {
+          test_case_id: string
+          result: TestCaseRunResult
+          build_label: string
+          tested_by: string
+        }
+        Update: Record<string, never>
+        Relationships: [
+          {
+            foreignKeyName: "test_case_runs_test_case_id_fkey"
+            columns: ["test_case_id"]
+            referencedRelation: "test_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_case_runs_tested_by_fkey"
+            columns: ["tested_by"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -229,6 +261,7 @@ export type Database = {
       test_case_priority: TestCasePriority
       test_case_category: TestCaseCategory
       test_case_platform: TestCasePlatform
+      test_case_run_result: TestCaseRunResult
     }
   }
 }

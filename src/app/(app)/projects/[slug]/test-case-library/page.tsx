@@ -24,7 +24,7 @@ export default async function TestCaseLibraryPage({
 
   const { data: testCases } = await supabase
     .from("test_cases")
-    .select("*, profiles!test_cases_owner_id_fkey(full_name, email)")
+    .select("*, profiles!test_cases_owner_id_fkey(full_name, email), test_case_runs(result)")
     .eq("project_id", project.id)
     .order("case_number", { ascending: true })
 

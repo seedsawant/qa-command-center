@@ -34,16 +34,18 @@ import {
 import {
   CATEGORIES,
   CATEGORY_LABELS,
+  computeRunStats,
   formatCaseNumber,
   PLATFORM_LABELS,
   PLATFORMS,
   PRIORITIES,
   PRIORITY_LABELS,
 } from "@/lib/test-cases"
-import type { Database } from "@/types/database.types"
+import type { Database, TestCaseRunResult } from "@/types/database.types"
 
 type TestCaseRow = Database["public"]["Tables"]["test_cases"]["Row"] & {
   profiles: { full_name: string | null; email: string } | null
+  test_case_runs: { result: TestCaseRunResult }[]
 }
 
 const PRIORITY_BADGE_VARIANT: Record<string, "destructive" | "secondary" | "outline"> = {
@@ -143,6 +145,34 @@ export function TestCaseTable({
             <span className="text-sm">{owner.full_name ?? owner.email}</span>
           ) : (
             <span className="text-sm text-muted-foreground">Unassigned</span>
+          )
+        },
+      }),
+      columnHelper.accessor((row) => computeRunStats(row.test_case_runs).passRate ?? -1, {
+        id: "passRate",
+        header: ({ column }) => (
+          <SortButton
+            label="Pass rate"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          />
+        ),
+        cell: (info) => {
+          const stats = computeRunStats(info.row.original.test_case_runs)
+          if (stats.total === 0) {
+            return <span className="text-xs text-muted-foreground">Not tested</span>
+          }
+          const decisive = stats.passed + stats.failed
+          return (
+            <span
+              className={
+                stats.passRate !== null && stats.passRate < 50
+                  ? "text-sm font-medium text-destructive"
+                  : "text-sm"
+              }
+            >
+              {stats.passed}/{decisive || stats.total}
+              {stats.passRate !== null && ` · ${stats.passRate}%`}
+            </span>
           )
         },
       }),
