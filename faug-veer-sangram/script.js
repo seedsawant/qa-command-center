@@ -106,7 +106,7 @@ const rounds = [
    ============================================================================= */
 const matches = [
   // ---- WINNERS ROUND OF 16 --------------------------------------------------
-  { id: "W1",  round: "WR16", teamA: 1,  teamB: 2,  scoreA: 0, scoreB: 0, status: "UPCOMING", winner: null },
+  { id: "W1",  round: "WR16", teamA: 1,  teamB: 2,  scoreA: 0, scoreB: 0, status: "COMPLETED", winner: 1 },
   { id: "W2",  round: "WR16", teamA: 3,  teamB: 4,  scoreA: 0, scoreB: 0, status: "UPCOMING", winner: null },
   { id: "W3",  round: "WR16", teamA: 5,  teamB: 6,  scoreA: 0, scoreB: 0, status: "UPCOMING", winner: null },
   { id: "W4",  round: "WR16", teamA: 7,  teamB: 8,  scoreA: 0, scoreB: 0, status: "UPCOMING", winner: null },
