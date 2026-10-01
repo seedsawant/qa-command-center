@@ -18,6 +18,12 @@ create table if not exists public.fvs_state (
 
 alter table public.fvs_state enable row level security;
 
+-- Table privileges for the Data API. Row-level security (the policies below) still
+-- decides who can actually read or write rows; these grants just let the API reach
+-- the table, which is needed if "automatically expose new tables" is turned off.
+grant select on public.fvs_state to anon, authenticated;
+grant insert, update, delete on public.fvs_state to authenticated;
+
 drop policy if exists "anyone can read bracket" on public.fvs_state;
 create policy "anyone can read bracket"
   on public.fvs_state
