@@ -45,22 +45,22 @@ const CONFIG = {
    `logo` can be any image path/URL. Transparent PNGs work best.
    ============================================================================= */
 const teams = {
-  1:  { name: "", logo: "" },
-  2:  { name: "", logo: "" },
-  3:  { name: "", logo: "" },
-  4:  { name: "", logo: "" },
-  5:  { name: "", logo: "" },
-  6:  { name: "", logo: "" },
-  7:  { name: "", logo: "" },
-  8:  { name: "", logo: "" },
-  9:  { name: "", logo: "" },
-  10: { name: "", logo: "" },
-  11: { name: "", logo: "" },
-  12: { name: "", logo: "" },
-  13: { name: "", logo: "" },
-  14: { name: "", logo: "" },
-  15: { name: "", logo: "" },
-  16: { name: "", logo: "" },
+  1:  { name: "Thunder Hawks", logo: "" },
+  2:  { name: "Iron Wolves", logo: "" },
+  3:  { name: "Shadow Blades", logo: "" },
+  4:  { name: "Crimson Tigers", logo: "" },
+  5:  { name: "Storm Riders", logo: "" },
+  6:  { name: "Night Falcons", logo: "" },
+  7:  { name: "Golden Eagles", logo: "" },
+  8:  { name: "Frost Giants", logo: "" },
+  9:  { name: "Viper Squad", logo: "" },
+  10: { name: "Steel Titans", logo: "" },
+  11: { name: "Phantom Kings", logo: "" },
+  12: { name: "Blaze Rangers", logo: "" },
+  13: { name: "Royal Cobras", logo: "" },
+  14: { name: "Neon Raiders", logo: "" },
+  15: { name: "Desert Lions", logo: "" },
+  16: { name: "Silent Reapers", logo: "" },
 };
 
 
@@ -236,7 +236,7 @@ function resolveBracket() {
    ============================================================================= */
 const GEO = {
   PAD_X: 28,
-  CARD_W: 208,
+  CARD_W: 220,
   CARD_H: 64,
   GAP_X: 36,           // horizontal gap between columns (connector trunks live here)
   WB_TOP: 76,          // y of first Winners Round of 16 card
@@ -513,7 +513,9 @@ function teamRow(s, i) {
   if (s.winner != null && id != null) row.classList.add(id === s.winner ? "is-winner" : "is-loser");
 
   row.appendChild(logoEl(id));
-  row.appendChild(h("span", "team-name", t?.name || ""));
+  const nameEl = h("span", "team-name", t?.name || "");
+  if (t?.name) nameEl.title = t.name; // full name on hover when the card truncates it
+  row.appendChild(nameEl);
   if (CONFIG.showSlotHints && !(t && t.name)) row.appendChild(h("span", "team-hint", hintText(s, i)));
   row.appendChild(h("span", "score", String(i === 0 ? s.scoreA : s.scoreB)));
   return row;
