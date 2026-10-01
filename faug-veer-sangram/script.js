@@ -43,8 +43,8 @@ const CONFIG = {
   // static page that only shows the data in this file. Both values are public by
   // design: the anon key can only do what the database's row-level security allows.
   supabase: {
-    url: "",     // e.g. "https://abcdxyz.supabase.co"
-    anonKey: "", // the project's "anon" / publishable key (never the service-role key)
+    url: "https://vzpknujqblclxlsncmtj.supabase.co",
+    anonKey: "sb_publishable_P4ukKrZ76O4qy4m0VUaLQQ_j_JcFOs7", // publishable key (safe in a browser; never the secret key)
   },
 };
 
