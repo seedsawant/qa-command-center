@@ -683,3 +683,62 @@ main { position: relative; padding: 8px 12px 0; }
   .teams-grid { grid-template-columns: 28px 1fr; }
   .teams-grid input:nth-of-type(2n) { grid-column: 2; }
 }
+
+/* ---------------------------------------------------------------------------
+   Stream mode  (#stream, optionally &view=rotate and &bg=clear)
+   The page fills the window with no scrolling; script.js scales the bracket to fit.
+   --------------------------------------------------------------------------- */
+html.stream, html.stream body { height: 100%; overflow: hidden; }
+
+html.stream .hero {
+  box-sizing: border-box;
+  height: 64px;
+  padding: 0 28px;
+  text-align: left;
+}
+html.stream .hero-inner {
+  max-width: none;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+html.stream .title { order: 1; font-size: 36px; line-height: 1; letter-spacing: 0.08em; filter: none; }
+html.stream .subtitle { order: 2; margin: 0; font-size: 15px; letter-spacing: 0.4em; gap: 0; }
+html.stream .subtitle::before, html.stream .subtitle::after { display: none; }
+html.stream .subtitle span { padding-left: 0; }
+html.stream .chips { order: 3; margin: 0 0 0 auto; font-size: 13px; letter-spacing: 0.26em; }
+
+html.stream main {
+  position: fixed;
+  left: 0; right: 0; top: 64px; bottom: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+html.stream .viewport { overflow: hidden; padding: 0; width: 100%; height: 100%; display: grid; place-items: center; }
+html.stream .stage { margin: 0; flex: none; }
+html.stream .scroll-hint,
+html.stream .foot,
+html.stream .admin-bar { display: none; }
+
+/* Smaller Champion box to fit the compact layout */
+html.stream .champion-crest { width: 56px; height: 56px; margin: 2px 0; }
+html.stream .champion-crest svg { width: 46px; height: 46px; }
+html.stream .champion .logo--xl { width: 56px; height: 56px; flex-basis: 56px; }
+html.stream .champion-name { font-size: 20px; }
+
+/* A match that is on air stands out */
+html.stream .match[data-status="LIVE"] { animation: onair 2.4s ease-in-out infinite; }
+@keyframes onair {
+  0%, 100% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 84, 104, 0.25); }
+  50%      { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38), 0 0 18px 2px rgba(255, 84, 104, 0.55); }
+}
+
+/* Cross-fade between the winners and losers halves while rotating */
+.stage { transition: opacity 0.35s ease; }
+.stage.is-fading { opacity: 0; }
+
+/* Transparent background (&bg=clear) for use as an overlay */
+html.clear, html.clear body { background: transparent !important; }
+html.clear body::before { display: none; }

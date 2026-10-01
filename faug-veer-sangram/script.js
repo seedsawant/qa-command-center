@@ -243,7 +243,27 @@ function resolveBracket() {
 /* =============================================================================
    6. LAYOUT — every card position derives from the bracket structure
    ============================================================================= */
-const GEO = {
+/* ---- display mode (read from the address after the #) ---------------------------
+     #stream                  whole bracket scaled to fit the screen, no scrolling
+     #stream&view=rotate      alternates winners / losers full-screen (&every=15 seconds)
+     #stream&view=winners     (or losers) pin one half
+     #stream&bg=clear         transparent page background, for overlays in OBS
+     #admin                   shows the admin log-in (see section 9)
+   Options combine with &, for example  #stream&view=rotate&bg=clear                  */
+const MODE = { stream: false, view: "all", rotate: false, every: 15, clear: false };
+const hashParams = () => new URLSearchParams(location.hash.slice(1));
+
+function readMode() {
+  const p = hashParams();
+  const v = p.get("view");
+  MODE.stream = p.has("stream");
+  MODE.clear = p.get("bg") === "clear";
+  MODE.rotate = MODE.stream && v === "rotate";
+  MODE.every = Math.min(120, Math.max(5, parseInt(p.get("every"), 10) || 15));
+  MODE.view = !MODE.stream ? "all" : MODE.rotate ? "winners" : (v === "winners" || v === "losers") ? v : "all";
+}
+
+const GEO_BASE = {
   PAD_X: 28,
   CARD_W: 220,
   CARD_H: 64,
@@ -258,22 +278,33 @@ const GEO = {
   GRAND_GAP: 44,
   CHAMP_H: 176,
 };
-GEO.PITCH_X = GEO.CARD_W + GEO.GAP_X;
-GEO.GRAND_H = GEO.GRAND_HEAD + GEO.GRAND_ROW * 2;
+// Tighter sizes for stream mode so a whole 16:9 frame fits without scrolling.
+const GEO_STREAM = { CARD_H: 56, WB_TOP: 56, WB_PITCH: 64, LB_GAP: 76, LB_PITCH: 70, GRAND_GAP: 36, CHAMP_H: 160 };
+
+const GEO = {};
+function applyGeo() {
+  Object.assign(GEO, GEO_BASE);
+  if (MODE.stream) Object.assign(GEO, GEO_STREAM);
+  if (MODE.stream && MODE.view === "losers") GEO.LB_PITCH = 170; // only 4 rows, so use the height
+  GEO.PITCH_X = GEO.CARD_W + GEO.GAP_X;
+  GEO.GRAND_H = GEO.GRAND_HEAD + GEO.GRAND_ROW * 2;
+}
 const colX = (c) => GEO.PAD_X + c * GEO.PITCH_X;
 
 function computeLayout() {
+  const view = MODE.view;                       // "all" | "winners" | "losers"
   const roundBy = Object.fromEntries(rounds.map((r) => [r.key, r]));
   const matchBy = Object.fromEntries(matches.map((m) => [m.id, m]));
   const pos = {};
   const seen = {};
 
   const wbBottom = GEO.WB_TOP + 7 * GEO.WB_PITCH + GEO.CARD_H;
-  const lbTop = wbBottom + GEO.LB_GAP;
+  const lbTop = view === "losers" ? GEO.WB_TOP : wbBottom + GEO.LB_GAP;
 
   for (const m of matches) {
     const r = roundBy[m.round];
     if (r.bracket === "final") continue;
+    if (view !== "all" && r.bracket !== view) continue;   // not part of this view
 
     const idx = (seen[r.key] = (seen[r.key] ?? -1) + 1);
 
@@ -295,21 +326,29 @@ function computeLayout() {
     pos[m.id] = { x: colX(r.col), y: cy - GEO.CARD_H / 2, w: GEO.CARD_W, h: GEO.CARD_H };
   }
 
-  // Grand Final sits level with the Winners Final so that line runs dead straight.
-  const wfCy = pos.WF.y + GEO.CARD_H / 2;
-  const gx = colX(6);
-  pos.GF = { x: gx, y: wfCy - GEO.GRAND_H / 2, w: GEO.GRAND_W, h: GEO.GRAND_H };
+  // Grand Final sits level with the final of the bracket on show, so that line runs
+  // dead straight. In the winners-only view it moves in next to the Winners Final.
+  const anchor = view === "losers" ? pos.L14 : pos.WF;   // L14 = Losers Final
+  const gx = colX(view === "winners" ? 4 : 6);
+  const cyGF = anchor.y + GEO.CARD_H / 2;
+  pos.GF = { x: gx, y: cyGF - GEO.GRAND_H / 2, w: GEO.GRAND_W, h: GEO.GRAND_H };
   pos.GFR = { x: gx, y: pos.GF.y + GEO.GRAND_H + GEO.GRAND_GAP, w: GEO.GRAND_W, h: GEO.GRAND_H };
   pos.CHAMP = { x: gx, y: pos.GF.y - GEO.GRAND_GAP - GEO.CHAMP_H, w: GEO.GRAND_W, h: GEO.CHAMP_H };
 
-  const lbBottom = lbTop + 3 * GEO.LB_PITCH + GEO.CARD_H;
+  // Keep everything below the round labels; the half views can push the Champion box up.
+  const topMin = GEO.WB_TOP - 36;
+  const minY = Math.min(...Object.values(pos).map((p) => p.y));
+  const dy = minY < topMin ? topMin - minY : 0;
+  if (dy) for (const p of Object.values(pos)) p.y += dy;
+
+  const bottom = Math.max(...Object.values(pos).map((p) => p.y + p.h));
   return {
     pos,
-    wbBottom,
-    lbTop,
-    lbBottom,
+    dy,
+    wbBottom: wbBottom + dy,
+    lbTop: lbTop + dy,
     width: gx + GEO.GRAND_W + GEO.PAD_X,
-    height: lbBottom + 44,
+    height: bottom + (MODE.stream ? 20 : 44),
   };
 }
 
@@ -349,17 +388,20 @@ function render() {
   canvasSize = { width: L.width, height: L.height };
 
   /* --- layer 0: decorative background art + section rules ------------------ */
-  canvas.appendChild(buildDecor(L));
-  canvas.appendChild(sectionTitle("WINNERS BRACKET", 12, L.width));
-  canvas.appendChild(sectionTitle("LOSERS BRACKET", L.wbBottom + 30, L.width));
+  if (MODE.view === "all") canvas.appendChild(buildDecor(L));
+  if (!MODE.stream) {
+    canvas.appendChild(sectionTitle("WINNERS BRACKET", 12, L.width));
+    canvas.appendChild(sectionTitle("LOSERS BRACKET", L.wbBottom + 30, L.width));
+  }
 
   /* --- round labels -------------------------------------------------------- */
   for (const r of rounds) {
     if (r.bracket === "final") continue;
+    if (MODE.view !== "all" && r.bracket !== MODE.view) continue;
     const lab = h("div", "round-label", r.label);
     place(lab, {
       x: colX(r.col),
-      y: (r.bracket === "winners" ? GEO.WB_TOP : L.lbTop) - 30,
+      y: (r.bracket === "winners" ? GEO.WB_TOP + L.dy : L.lbTop) - 30,
       w: GEO.CARD_W,
       h: 18,
     });
@@ -374,6 +416,7 @@ function render() {
     if (lk.kind === "L") continue; // loser drops are drawn on hover only
     const a = L.pos[lk.from];
     const b = L.pos[lk.to];
+    if (!a || !b) continue;        // one end is not part of this view
     const ay = a.y + a.h / 2;
     const by = b.y + b.h / 2;
     let d;
@@ -402,6 +445,7 @@ function render() {
   /* --- layer 2: match cards ------------------------------------------------ */
   const cardEls = {};
   for (const m of matches) {
+    if (!L.pos[m.id]) continue;    // not part of this view
     const card = buildMatchCard(st[m.id], L.pos[m.id], roundBy[m.round]);
     cardEls[m.id] = card;
     canvas.appendChild(card);
@@ -409,7 +453,7 @@ function render() {
 
   /* --- champion + legend --------------------------------------------------- */
   canvas.appendChild(buildChampion(champion, L.pos.CHAMP));
-  canvas.appendChild(buildLegend(L));
+  if (!MODE.stream) canvas.appendChild(buildLegend(L));
 
   /* --- layer 3: hover-only drop lines (loser -> losers bracket) ------------ */
   const dropSvg = sv("svg", { class: "drops", width: L.width, height: L.height, viewBox: `0 0 ${L.width} ${L.height}` });
@@ -632,6 +676,7 @@ function wireHover({ links, pos, cardEls, linkEls, dropSvg }) {
       const other = lk.from === id ? lk.to : lk.from;
       cardEls[other]?.classList.add("is-related");
       if (lk.kind === "L") {
+        if (!pos[lk.from] || !pos[lk.to]) continue;
         dropSvg.appendChild(sv("path", { d: dropPath(pos[lk.from], pos[lk.to]), class: "drop" }));
       } else {
         linkEls[`${lk.from}>${lk.to}`]?.forEach((p) => p.classList.add("hl"));
@@ -657,7 +702,11 @@ function fit() {
   if (!canvasSize.width) return;
 
   let scale = 1;
-  if (window.innerWidth >= 1000) {
+  if (MODE.stream) {
+    const hero = document.querySelector(".hero");
+    const availH = window.innerHeight - (hero ? hero.offsetHeight : 0);
+    scale = Math.min(window.innerWidth / canvasSize.width, availH / canvasSize.height);
+  } else if (window.innerWidth >= 1000) {
     scale = Math.min(1.15, Math.max(0.7, vp.clientWidth / canvasSize.width));
   }
   stage.style.width = canvasSize.width * scale + "px";
@@ -1003,7 +1052,7 @@ function renderAdminBar() {
     out.addEventListener("click", () => setSession(null));
     bar.append(h("span", "admin-tag", "ADMIN"), h("span", "admin-hint", "Click a match to edit it"), teamsBtn, out);
     bar.hidden = false;
-  } else if (location.hash === "#admin") {
+  } else if (hashParams().has("admin")) {
     const inBtn = button("Admin log in", "btn--primary");
     inBtn.addEventListener("click", openLogin);
     bar.appendChild(inBtn);
@@ -1029,5 +1078,32 @@ function startLive() {
 
 window.Bracket.live = { start: startLive, refresh, snapshot, state: LIVE };
 
+/* ---- mode switching + rotation ------------------------------------------------- */
+let rotateTimer = 0;
+
+function setupMode() {
+  readMode();
+  applyGeo();
+  document.documentElement.classList.toggle("stream", MODE.stream);
+  document.documentElement.classList.toggle("clear", MODE.clear);
+  clearInterval(rotateTimer);
+  if (MODE.rotate) rotateTimer = setInterval(rotateView, MODE.every * 1000);
+}
+
+function rotateView() {
+  if (LIVE.busy) return;
+  const stage = document.getElementById("stage");
+  stage.classList.add("is-fading");
+  setTimeout(() => {
+    MODE.view = MODE.view === "winners" ? "losers" : "winners";
+    applyGeo();
+    render();
+    stage.classList.remove("is-fading");
+  }, 350);
+}
+
+window.addEventListener("hashchange", () => { setupMode(); render(); });
+
+setupMode();
 render();
 startLive();
