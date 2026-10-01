@@ -799,3 +799,68 @@ html.stream .chips { order: 4; margin-left: 0; }
 /* Narrow stream windows: drop the decorative bits so the live/next strip keeps its room */
 @media (max-width: 1700px) { html.stream .chips { display: none; } }
 @media (max-width: 1500px) { html.stream .subtitle { display: none; } }
+
+/* ---------------------------------------------------------------------------
+   Winner banner
+   --------------------------------------------------------------------------- */
+.announce {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(16px, 5vh, 56px);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: max-content;
+  max-width: min(1100px, 94vw);
+  padding: 16px 30px 16px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(45, 226, 181, 0.7);
+  background: linear-gradient(180deg, rgba(14, 44, 86, 0.98), rgba(5, 20, 44, 0.98));
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.6), 0 0 44px rgba(45, 226, 181, 0.25);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 36px);
+  transition: opacity 0.5s ease, transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+.announce.is-in { opacity: 1; transform: translate(-50%, 0); }
+.announce.is-champion {
+  border-color: rgba(244, 192, 78, 0.9);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.6), 0 0 56px rgba(244, 192, 78, 0.4);
+}
+.announce-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.announce-tag {
+  align-self: flex-start;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: clamp(11px, 0.8vw, 15px);
+  font-weight: 800;
+  letter-spacing: 0.26em;
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.announce.is-champion .announce-tag { color: #2b1d00; background: var(--gold); }
+.announce-main {
+  font-size: clamp(22px, 2.3vw, 48px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.announce-main b { margin-right: 6px; color: var(--gold); }
+.announce-main i { font-style: normal; color: var(--accent); }
+.announce.is-champion .announce-main i { color: var(--gold-soft); }
+.announce-sub {
+  font-size: clamp(14px, 1.15vw, 24px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.announce-sub.is-out { color: var(--text-mute); }
+.logo--banner { flex: 0 0 auto; width: clamp(44px, 4vw, 84px); height: clamp(44px, 4vw, 84px); border-radius: 12px; }
+
+@media (max-width: 640px) {
+  .announce { gap: 12px; padding: 12px 16px; max-width: calc(100vw - 24px); }
+}

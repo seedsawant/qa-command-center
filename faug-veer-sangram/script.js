@@ -39,6 +39,9 @@ const CONFIG = {
   // (Section 9 sets this when an admin is logged in.)
   onMatchClick: null,
 
+  // How long the winner banner stays on screen, in milliseconds.
+  announceMs: 6000,
+
   // Live results + admin mode (section 9). Leave both blank to run as a plain
   // static page that only shows the data in this file. Both values are public by
   // design: the anon key can only do what the database's row-level security allows.
@@ -382,6 +385,7 @@ function render() {
   const L = computeLayout();
   const roundBy = Object.fromEntries(rounds.map((r) => [r.key, r]));
   renderOnAir(st);
+  detectResults(st);
   const canvas = document.getElementById("canvas");
   canvas.replaceChildren();
   canvas.style.width = L.width + "px";
@@ -795,7 +799,7 @@ window.Bracket = {
    security in the database, not by this page). The admin opens the page with
    #admin on the end of the address, logs in, then clicks a match to edit it.
    ============================================================================= */
-const LIVE = { enabled: false, session: null, lastStamp: null, timer: 0, busy: false };
+const LIVE = { enabled: false, session: null, lastStamp: null, timer: 0, busy: false, synced: false };
 const SESSION_KEY = "fvs-admin-session";
 const POLL_MS = 8000;
 const RESULT_FIELDS = ["scoreA", "scoreB", "status", "winner"];
@@ -852,7 +856,12 @@ async function pull() {
 
 async function refresh() {
   if (LIVE.busy) return;          // never redraw under an open editor
-  try { if (await pull()) render(); } catch (e) { console.warn("[live] could not load results:", e.message); }
+  try {
+    const changed = await pull();
+    const first = !LIVE.synced;
+    LIVE.synced = true;                 // from now on, new results are announced
+    if (changed || first) render();
+  } catch (e) { console.warn("[live] could not load results:", e.message); }
 }
 
 /* ---- admin session --------------------------------------------------------- */
@@ -1027,8 +1036,8 @@ function openMatchEditor(id) {
         const a = Math.trunc(+sa.value), b = Math.trunc(+sb2.value);
         if (!(a >= 0 && a <= 99 && b >= 0 && b <= 99)) throw new Error("Scores must be whole numbers from 0 to 99.");
         Object.assign(m, { scoreA: a, scoreB: b, status: status.value, winner: win.value || null });
+        try { await pushState(); } catch (err) { Object.assign(m, prev); throw err; }
         render();
-        try { await pushState(); } catch (err) { Object.assign(m, prev); render(); throw err; }
         close();
       });
     });
@@ -1061,12 +1070,11 @@ function openTeamsEditor() {
       e.preventDefault();
       guarded(form, msg, async () => {
         for (const r of rows) Object.assign(teams[r.slot], { name: r.name.value.trim(), logo: r.logo.value.trim() });
-        render();
         try { await pushState(); } catch (err) {
           for (const r of rows) Object.assign(teams[r.slot], prev[r.slot]);
-          render();
           throw err;
         }
+        render();
         close();
       });
     });
@@ -1115,6 +1123,95 @@ function startLive() {
   clearInterval(LIVE.timer);
   LIVE.timer = setInterval(refresh, POLL_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+}
+
+/* =============================================================================
+   10. WINNER BANNER
+   -----------------------------------------------------------------------------
+   When a match becomes COMPLETED with a winner while the page is open (a live
+   update from the database, or the admin saving), a banner slides in for a few
+   seconds: who won, the score, and where the winner and loser go next. Results
+   that were already there when the page loaded are never announced. Several
+   results at once play one after another.
+   ============================================================================= */
+const ANNOUNCE = { prev: null, queue: [], showing: false };
+
+function detectResults(st) {
+  if (!LIVE.synced) return;                       // no baseline yet (still loading, or not connected)
+  const now = {};
+  for (const s of Object.values(st)) now[s.id] = s.status === "COMPLETED" && s.winner != null ? s.winner : null;
+  const prev = ANNOUNCE.prev;
+  ANNOUNCE.prev = now;
+  if (!prev) return;                              // first look: this is the baseline
+  for (const m of matches) {
+    if (now[m.id] != null && now[m.id] !== prev[m.id]) enqueueBanner(resultInfo(st, m.id));
+  }
+}
+
+function resultInfo(st, id) {
+  const s = st[id];
+  const winnerIsA = s.winner === s.teamA;
+  const side = (w) => (w ? 0 : 1);
+  const winnerName = teamLabel(s, side(winnerIsA));
+  const loserName = teamLabel(s, side(!winnerIsA));
+  const wScore = winnerIsA ? s.scoreA : s.scoreB;
+  const lScore = winnerIsA ? s.scoreB : s.scoreA;
+  const score = wScore || lScore ? `${wScore}–${lScore}` : "";
+
+  const roundName = (matchId) => {
+    const m = matches.find((x) => x.id === matchId);
+    return rounds.find((r) => r.key === m.round)?.label || matchId;
+  };
+  const nextWin = matches.find((x) => x.from?.includes("W:" + id));
+  const nextLose = matches.find((x) => x.from?.includes("L:" + id));
+
+  let tag = "MATCH RESULT", line1 = "", line2 = "", champion = false;
+  if (id === "GFR" || (id === "GF" && winnerIsA)) {
+    tag = "CHAMPIONS"; champion = true; line1 = "TOURNAMENT CHAMPIONS";
+  } else if (id === "GF") {
+    line1 = "FORCES A GRAND FINAL RESET";        // the losers-bracket team won, so it is not over yet
+  } else if (nextWin) {
+    line1 = `ADVANCES TO ${roundName(nextWin.id)} · ${nextWin.id}`;
+  }
+  if (id !== "GF" && id !== "GFR") {
+    line2 = nextLose ? `${loserName} DROPS TO ${nextLose.id}` : `${loserName} ELIMINATED`;
+  }
+  const winnerTeam = s.winner;
+  return { id, tag, winnerName, score, line1, line2, champion, winnerTeam };
+}
+
+function enqueueBanner(info) {
+  ANNOUNCE.queue.push(info);
+  if (ANNOUNCE.queue.length > 4) ANNOUNCE.queue.shift();
+  if (!ANNOUNCE.showing) playNextBanner();
+}
+
+function playNextBanner() {
+  const info = ANNOUNCE.queue.shift();
+  if (!info) { ANNOUNCE.showing = false; return; }
+  ANNOUNCE.showing = true;
+
+  const el = h("div", "announce" + (info.champion ? " is-champion" : ""));
+  el.setAttribute("role", "status");
+  const t = teams[info.winnerTeam];
+  if (t && t.logo) el.appendChild(logoEl(info.winnerTeam, "logo--banner"));
+  const body = h("div", "announce-body");
+  body.appendChild(h("span", "announce-tag", info.tag));
+  const main = h("div", "announce-main");
+  main.appendChild(h("b", null, info.id));
+  main.appendChild(document.createTextNode(` ${info.winnerName} `));
+  main.appendChild(h("i", null, info.score ? `WIN ${info.score}` : "WIN"));
+  body.appendChild(main);
+  if (info.line1) body.appendChild(h("div", "announce-sub", info.line1));
+  if (info.line2) body.appendChild(h("div", "announce-sub is-out", info.line2));
+  el.appendChild(body);
+  document.body.appendChild(el);
+
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("is-in")));
+  setTimeout(() => {
+    el.classList.remove("is-in");
+    setTimeout(() => { el.remove(); playNextBanner(); }, 600);
+  }, CONFIG.announceMs);
 }
 
 window.Bracket.live = { start: startLive, refresh, snapshot, state: LIVE };
