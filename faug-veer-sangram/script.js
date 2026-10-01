@@ -36,7 +36,16 @@ const CONFIG = {
   showSlotHints: true,
 
   // Hook for a future edit mode: called with the match id when a card is clicked.
-  onMatchClick: null, // e.g. (id) => openEditor(id)
+  // (Section 9 sets this when an admin is logged in.)
+  onMatchClick: null,
+
+  // Live results + admin mode (section 9). Leave both blank to run as a plain
+  // static page that only shows the data in this file. Both values are public by
+  // design: the anon key can only do what the database's row-level security allows.
+  supabase: {
+    url: "https://vzpknujqblclxlsncmtj.supabase.co",
+    anonKey: "sb_publishable_P4ukKrZ76O4qy4m0VUaLQQ_j_JcFOs7", // publishable key (safe in a browser; never the secret key)
+  },
 };
 
 
@@ -551,6 +560,7 @@ function buildMatchCard(s, p, round) {
     }
   }
 
+  if (CONFIG.onMatchClick) card.classList.add("is-editable");
   card.addEventListener("click", () => CONFIG.onMatchClick?.(s.id));
   return card;
 }
@@ -682,4 +692,342 @@ window.Bracket = {
   },
 };
 
+
+/* =============================================================================
+   9. LIVE RESULTS + ADMIN MODE
+   -----------------------------------------------------------------------------
+   Talks to Supabase over plain fetch (no library). Needs CONFIG.supabase filled in
+   and the table from supabase-setup.sql. The database holds one JSON document with
+   the teams (name, logo) and each match's scoreA / scoreB / status / winner. It
+   overrides the defaults in this file.
+
+   Everyone can READ it; only the admin login can WRITE (enforced by row-level
+   security in the database, not by this page). The admin opens the page with
+   #admin on the end of the address, logs in, then clicks a match to edit it.
+   ============================================================================= */
+const LIVE = { enabled: false, session: null, lastStamp: null, timer: 0, busy: false };
+const SESSION_KEY = "fvs-admin-session";
+const POLL_MS = 8000;
+const RESULT_FIELDS = ["scoreA", "scoreB", "status", "winner"];
+
+async function sb(path, { method = "GET", body, token, prefer } = {}) {
+  const headers = { apikey: CONFIG.supabase.anonKey };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = "Bearer " + token;
+  if (prefer) headers.Prefer = prefer;
+  const res = await fetch(CONFIG.supabase.url.replace(/\/+$/, "") + path, {
+    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  if (!res.ok) throw new Error(json?.error_description || json?.msg || json?.message || text || res.statusText);
+  return json;
+}
+
+/* ---- state <-> document ---------------------------------------------------- */
+function snapshot() {
+  return {
+    teams: JSON.parse(JSON.stringify(teams)),
+    matches: Object.fromEntries(matches.map((m) => [m.id, {
+      scoreA: m.scoreA, scoreB: m.scoreB, status: m.status, winner: m.winner ?? null,
+    }])),
+  };
+}
+
+function applyState(doc) {
+  if (!doc || typeof doc !== "object") return;
+  for (const [slot, t] of Object.entries(doc.teams || {})) {
+    if (!teams[slot] || !t) continue;
+    teams[slot].name = String(t.name ?? "");
+    teams[slot].logo = String(t.logo ?? "");
+  }
+  for (const [id, r] of Object.entries(doc.matches || {})) {
+    const m = matches.find((x) => x.id === id);
+    if (!m || !r) continue;
+    for (const f of RESULT_FIELDS) if (f in r) m[f] = r[f];
+    m.scoreA = Number.isFinite(+m.scoreA) ? +m.scoreA : 0;
+    m.scoreB = Number.isFinite(+m.scoreB) ? +m.scoreB : 0;
+  }
+}
+
+async function pull() {
+  const rows = await sb("/rest/v1/fvs_state?id=eq.bracket&select=data,updated_at");
+  const row = rows?.[0];
+  if (!row || row.updated_at === LIVE.lastStamp) return false;
+  LIVE.lastStamp = row.updated_at;
+  applyState(row.data);
+  return true;
+}
+
+async function refresh() {
+  if (LIVE.busy) return;          // never redraw under an open editor
+  try { if (await pull()) render(); } catch (e) { console.warn("[live] could not load results:", e.message); }
+}
+
+/* ---- admin session --------------------------------------------------------- */
+function persistSession(s) {
+  LIVE.session = s;
+  try { s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); } catch { /* storage blocked */ }
+}
+
+function setSession(s) {
+  persistSession(s);
+  CONFIG.onMatchClick = s ? openMatchEditor : null;
+  renderAdminBar();
+  render();
+}
+
+const toSession = (r, email) => ({
+  access: r.access_token, refresh: r.refresh_token,
+  expires: Date.now() + r.expires_in * 1000, email: r.user?.email || email,
+});
+
+async function login(email, password) {
+  const r = await sb("/auth/v1/token?grant_type=password", { method: "POST", body: { email, password } });
+  setSession(toSession(r, email));
+}
+
+async function freshToken() {
+  const s = LIVE.session;
+  if (!s) throw new Error("Not logged in.");
+  if (Date.now() < s.expires - 60000) return s.access;
+  try {
+    const r = await sb("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: { refresh_token: s.refresh } });
+    persistSession(toSession(r, s.email));
+    return LIVE.session.access;
+  } catch {
+    setSession(null);
+    throw new Error("Your admin session expired. Log in again.");
+  }
+}
+
+async function pushState() {
+  const token = await freshToken();
+  const stamp = new Date().toISOString();
+  await sb("/rest/v1/fvs_state?on_conflict=id", {
+    method: "POST", token, prefer: "resolution=merge-duplicates,return=minimal",
+    body: { id: "bracket", data: snapshot(), updated_at: stamp },
+  });
+  LIVE.lastStamp = stamp;
+}
+
+/* ---- tiny UI kit ----------------------------------------------------------- */
+function openModal(title, build) {
+  const back = h("div", "modal-back");
+  const box = h("div", "modal");
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", title);
+  const head = h("div", "modal-head");
+  head.appendChild(h("h2", null, title));
+  const x = h("button", "modal-x", "×");
+  x.type = "button";
+  x.setAttribute("aria-label", "Close");
+  head.appendChild(x);
+  box.appendChild(head);
+  back.appendChild(box);
+  document.body.appendChild(back);
+  LIVE.busy = true;
+
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    back.remove();
+    LIVE.busy = false;
+  }
+  document.addEventListener("keydown", onKey);
+  back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
+  x.addEventListener("click", close);
+  build(box, close);
+  box.querySelector("input, select")?.focus();
+  return close;
+}
+
+function field(label, input) {
+  const wrap = h("label", "field");
+  wrap.appendChild(h("span", "field-label", label));
+  wrap.appendChild(input);
+  return wrap;
+}
+
+function input(type, value, attrs = {}) {
+  const el = document.createElement(type === "select" ? "select" : "input");
+  if (type !== "select") el.type = type;
+  if (value != null && type !== "select") el.value = value;
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function button(label, cls, type = "button") {
+  const b = h("button", "btn " + (cls || ""), label);
+  b.type = type;
+  return b;
+}
+
+/* Runs `work`, shows its error in `msg`, keeps the buttons usable. */
+async function guarded(form, msg, work) {
+  const buttons = [...form.querySelectorAll("button")];
+  buttons.forEach((b) => (b.disabled = true));
+  msg.textContent = "";
+  msg.hidden = true;
+  try { await work(); } catch (e) { msg.textContent = e.message; msg.hidden = false; }
+  buttons.forEach((b) => (b.disabled = false));
+}
+
+/* ---- dialogs --------------------------------------------------------------- */
+function openLogin() {
+  openModal("Admin log in", (box, close) => {
+    const form = h("form", "modal-form");
+    const email = input("email", "", { autocomplete: "username", required: "" });
+    const pass = input("password", "", { autocomplete: "current-password", required: "" });
+    const msg = h("p", "form-msg");
+    msg.hidden = true;
+    const go = button("Log in", "btn--primary", "submit");
+    form.append(field("Email", email), field("Password", pass), msg, go);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      guarded(form, msg, async () => { await login(email.value.trim(), pass.value); close(); });
+    });
+    box.appendChild(form);
+  });
+}
+
+function openMatchEditor(id) {
+  const m = matches.find((x) => x.id === id);
+  const st = resolveBracket().st[id];
+  if (!m || !st) return;
+  if (st.dormant) { return; }          // the Reset match is only editable once it is required
+
+  const label = (i) => {
+    const t = i === 0 ? st.teamA : st.teamB;
+    return t != null ? (teams[t].name || "Slot " + t) : (hintText(st, i) || "TBD");
+  };
+  const nameA = label(0), nameB = label(1);
+  const prev = { scoreA: m.scoreA, scoreB: m.scoreB, status: m.status, winner: m.winner };
+
+  openModal(`Match ${id}`, (box, close) => {
+    const form = h("form", "modal-form");
+    const sa = input("number", m.scoreA, { min: "0", max: "99", step: "1", inputmode: "numeric" });
+    const sb2 = input("number", m.scoreB, { min: "0", max: "99", step: "1", inputmode: "numeric" });
+    const status = input("select");
+    for (const s of STATUSES) status.appendChild(new Option(s, s, false, s === m.status));
+    const win = input("select");
+    win.appendChild(new Option("Decide by score", ""));
+    win.appendChild(new Option(nameA, "A"));
+    win.appendChild(new Option(nameB, "B"));
+    win.value = m.winner === "A" || (m.winner != null && m.winner === st.teamA) ? "A"
+              : m.winner === "B" || (m.winner != null && m.winner === st.teamB) ? "B" : "";
+
+    const scores = h("div", "field-row");
+    scores.append(field(nameA + " score", sa), field(nameB + " score", sb2));
+    const msg = h("p", "form-msg");
+    msg.hidden = true;
+    const note = h("p", "form-note", "Set the status to COMPLETED for the winner to advance.");
+    const actions = h("div", "modal-actions");
+    const cancel = button("Cancel", "btn--ghost");
+    const save = button("Save", "btn--primary", "submit");
+    cancel.addEventListener("click", close);
+    actions.append(cancel, save);
+    form.append(scores, field("Status", status), field("Winner", win), note, msg, actions);
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      guarded(form, msg, async () => {
+        const a = Math.trunc(+sa.value), b = Math.trunc(+sb2.value);
+        if (!(a >= 0 && a <= 99 && b >= 0 && b <= 99)) throw new Error("Scores must be whole numbers from 0 to 99.");
+        Object.assign(m, { scoreA: a, scoreB: b, status: status.value, winner: win.value || null });
+        render();
+        try { await pushState(); } catch (err) { Object.assign(m, prev); render(); throw err; }
+        close();
+      });
+    });
+    box.appendChild(form);
+  });
+}
+
+function openTeamsEditor() {
+  const prev = JSON.parse(JSON.stringify(teams));
+  openModal("Teams", (box, close) => {
+    const form = h("form", "modal-form");
+    const list = h("div", "teams-grid");
+    const rows = Object.keys(teams).map((slot) => {
+      const name = input("text", teams[slot].name, { maxlength: "40", placeholder: "Team name", "aria-label": `Slot ${slot} name` });
+      const logo = input("text", teams[slot].logo, { placeholder: "Logo URL (optional)", "aria-label": `Slot ${slot} logo URL` });
+      list.append(h("span", "slot-no", String(slot)), name, logo);
+      return { slot, name, logo };
+    });
+    const msg = h("p", "form-msg");
+    msg.hidden = true;
+    const note = h("p", "form-note", "Logos: paste an image address, for example assets/team1.png or a full https:// link.");
+    const actions = h("div", "modal-actions");
+    const cancel = button("Cancel", "btn--ghost");
+    const save = button("Save teams", "btn--primary", "submit");
+    cancel.addEventListener("click", close);
+    actions.append(cancel, save);
+    form.append(list, note, msg, actions);
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      guarded(form, msg, async () => {
+        for (const r of rows) Object.assign(teams[r.slot], { name: r.name.value.trim(), logo: r.logo.value.trim() });
+        render();
+        try { await pushState(); } catch (err) {
+          for (const r of rows) Object.assign(teams[r.slot], prev[r.slot]);
+          render();
+          throw err;
+        }
+        close();
+      });
+    });
+    box.appendChild(form);
+  });
+}
+
+/* ---- admin bar (hidden from the public unless the address ends in #admin) --- */
+function renderAdminBar() {
+  let bar = document.getElementById("adminBar");
+  if (!bar) {
+    bar = h("div", "admin-bar");
+    bar.id = "adminBar";
+    document.body.appendChild(bar);
+  }
+  bar.replaceChildren();
+  bar.hidden = true;
+  if (!LIVE.enabled) return;
+
+  if (LIVE.session) {
+    const teamsBtn = button("Teams", "btn--ghost");
+    const out = button("Log out", "btn--ghost");
+    teamsBtn.addEventListener("click", openTeamsEditor);
+    out.addEventListener("click", () => setSession(null));
+    bar.append(h("span", "admin-tag", "ADMIN"), h("span", "admin-hint", "Click a match to edit it"), teamsBtn, out);
+    bar.hidden = false;
+  } else if (location.hash === "#admin") {
+    const inBtn = button("Admin log in", "btn--primary");
+    inBtn.addEventListener("click", openLogin);
+    bar.appendChild(inBtn);
+    bar.hidden = false;
+  }
+}
+window.addEventListener("hashchange", renderAdminBar);
+
+function startLive() {
+  const c = CONFIG.supabase;
+  if (!c.url || !c.anonKey) return;       // not configured: stay a static page
+  LIVE.enabled = true;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (saved && saved.refresh) { LIVE.session = saved; CONFIG.onMatchClick = openMatchEditor; }
+  } catch { /* ignore */ }
+  renderAdminBar();
+  refresh().then(() => { if (LIVE.session) render(); });
+  clearInterval(LIVE.timer);
+  LIVE.timer = setInterval(refresh, POLL_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+}
+
+window.Bracket.live = { start: startLive, refresh, snapshot, state: LIVE };
+
 render();
+startLive();
