@@ -742,3 +742,60 @@ html.stream .match[data-status="LIVE"] { animation: onair 2.4s ease-in-out infin
 /* Transparent background (&bg=clear) for use as an overlay */
 html.clear, html.clear body { background: transparent !important; }
 html.clear body::before { display: none; }
+
+/* ---------------------------------------------------------------------------
+   Live now / Up next strip
+   --------------------------------------------------------------------------- */
+.onair {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 14px;
+  margin-top: 18px;
+}
+.onair[hidden] { display: none; }
+.onair-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(6, 18, 42, 0.55);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.onair-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  border: 1px solid rgba(45, 226, 181, 0.55);
+}
+.onair-group.is-live { border-color: rgba(255, 84, 104, 0.55); }
+.onair-group.is-live .onair-tag { color: #fff; background: linear-gradient(180deg, #ff6b7d, #e63c52); border-color: transparent; }
+.onair-item { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.onair-item b { margin-right: 4px; color: var(--gold); }
+.onair-item + .onair-item { padding-left: 16px; border-left: 1px solid var(--line); }
+
+@media (max-width: 640px) {
+  .onair-group { font-size: 14px; width: 100%; justify-content: center; }
+  .onair-item + .onair-item { padding-left: 0; border-left: 0; }
+}
+
+/* In stream mode the strip lives in the empty middle of the title strip */
+html.stream .onair { order: 3; flex: 1; min-width: 0; margin: 0; flex-wrap: nowrap; justify-content: center; gap: 12px; overflow: hidden; }
+html.stream .onair-group { flex-wrap: nowrap; gap: 14px; padding: 5px 12px; font-size: 14px; }
+html.stream .onair-tag { padding: 2px 8px; font-size: 11px; }
+html.stream .onair-group > :nth-child(n+4) { display: none; }   /* at most 2 matches per group */
+html.stream .chips { order: 4; margin-left: 0; }
+
+/* Narrow stream windows: drop the decorative bits so the live/next strip keeps its room */
+@media (max-width: 1700px) { html.stream .chips { display: none; } }
+@media (max-width: 1500px) { html.stream .subtitle { display: none; } }

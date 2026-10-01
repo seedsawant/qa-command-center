@@ -381,6 +381,7 @@ function render() {
   const { st, champion } = resolveBracket();
   const L = computeLayout();
   const roundBy = Object.fromEntries(rounds.map((r) => [r.key, r]));
+  renderOnAir(st);
   const canvas = document.getElementById("canvas");
   canvas.replaceChildren();
   canvas.style.width = L.width + "px";
@@ -607,6 +608,46 @@ function buildMatchCard(s, p, round) {
   if (CONFIG.onMatchClick) card.classList.add("is-editable");
   card.addEventListener("click", () => CONFIG.onMatchClick?.(s.id));
   return card;
+}
+
+/* Team name for a slot, falling back to "Slot 5" or "WIN W1" while it is undecided. */
+function teamLabel(s, i) {
+  const id = i === 0 ? s.teamA : s.teamB;
+  return id != null ? (teams[id].name || "Slot " + id) : (hintText(s, i) || "TBD");
+}
+
+/* "Live now" and "Up next" strip in the page header (and the stream's title strip).
+   Up next = matches still to play whose two teams are both known, in bracket order. */
+function renderOnAir(st) {
+  const host = document.querySelector(".hero-inner");
+  if (!host) return;
+  let bar = document.getElementById("onair");
+  if (!bar) {
+    bar = h("div", "onair");
+    bar.id = "onair";
+    host.appendChild(bar);
+  }
+  bar.replaceChildren();
+
+  const all = matches.map((m) => st[m.id]);
+  const live = all.filter((s) => s.status === "LIVE" && !s.dormant);
+  const next = all.filter((s) => s.status === "UPCOMING" && !s.dormant && s.teamA != null && s.teamB != null).slice(0, 3);
+
+  const group = (label, cls, list) => {
+    if (!list.length) return;
+    const g = h("div", "onair-group " + cls);
+    g.appendChild(h("span", "onair-tag", label));
+    for (const s of list) {
+      const item = h("span", "onair-item");
+      item.appendChild(h("b", null, s.id));
+      item.appendChild(document.createTextNode(` ${teamLabel(s, 0)} v ${teamLabel(s, 1)}`));
+      g.appendChild(item);
+    }
+    bar.appendChild(g);
+  };
+  group("LIVE", "is-live", live);
+  group("NEXT", "is-next", next);
+  bar.hidden = bar.childNodes.length === 0;
 }
 
 function buildChampion(championId, p) {
