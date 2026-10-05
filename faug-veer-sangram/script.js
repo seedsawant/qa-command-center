@@ -80,20 +80,21 @@ const teams = {
    3. ROUNDS
    `col` is the horizontal column. Winners and losers share the same columns.
    ============================================================================= */
+// `order` is the running order of play across both brackets (shown as "ROUND N" beside each name).
 const rounds = [
-  { key: "WR16", label: "WINNERS ROUND OF 16",   bracket: "winners", col: 0 },
-  { key: "WQF",  label: "WINNERS QUARTERFINALS", bracket: "winners", col: 1 },
-  { key: "WSF",  label: "WINNERS SEMIFINALS",    bracket: "winners", col: 2 },
-  { key: "WF",   label: "WINNERS FINAL",         bracket: "winners", col: 4 },
+  { key: "WR16", label: "WINNERS ROUND OF 16",   bracket: "winners", col: 0, order: 1 },
+  { key: "WQF",  label: "WINNERS QUARTERFINALS", bracket: "winners", col: 1, order: 3 },
+  { key: "WSF",  label: "WINNERS SEMIFINALS",    bracket: "winners", col: 2, order: 6 },
+  { key: "WF",   label: "WINNERS FINAL",         bracket: "winners", col: 4, order: 9 },
 
-  { key: "LR1",  label: "LOSERS ROUND 1",        bracket: "losers",  col: 1 },
-  { key: "LR2",  label: "LOSERS ROUND 2",        bracket: "losers",  col: 2 },
-  { key: "LR3",  label: "LOSERS ROUND 3",        bracket: "losers",  col: 3 },
-  { key: "LQF",  label: "LOSERS QUARTERFINAL",   bracket: "losers",  col: 4 },
-  { key: "LSF",  label: "LOSERS SEMIFINAL",      bracket: "losers",  col: 5 },
-  { key: "LF",   label: "LOSERS FINAL",          bracket: "losers",  col: 6 },
+  { key: "LR1",  label: "LOSERS ROUND 1",        bracket: "losers",  col: 1, order: 2 },
+  { key: "LR2",  label: "LOSERS ROUND 2",        bracket: "losers",  col: 2, order: 4 },
+  { key: "LR3",  label: "LOSERS ROUND 3",        bracket: "losers",  col: 3, order: 5 },
+  { key: "LQF",  label: "LOSERS QUARTERFINAL",   bracket: "losers",  col: 4, order: 7 },
+  { key: "LSF",  label: "LOSERS SEMIFINAL",      bracket: "losers",  col: 5, order: 8 },
+  { key: "LF",   label: "LOSERS FINAL",          bracket: "losers",  col: 6, order: 10 },
 
-  { key: "GF",   label: "GRAND FINAL",           bracket: "final" },
+  { key: "GF",   label: "GRAND FINAL",           bracket: "final", order: 11 },
   { key: "GFR",  label: "GRAND FINAL RESET",     bracket: "final" },
 ];
 
@@ -348,7 +349,7 @@ function computeLayout() {
   pos.CHAMP = { x: gx, y: champY, w: GEO.GRAND_W, h: GEO.CHAMP_H };
 
   // Keep everything below the round labels; the half views can push the Champion box up.
-  const topMin = GEO.WB_TOP - 36;
+  const topMin = GEO.WB_TOP - 48;
   const minY = Math.min(...Object.values(pos).map((p) => p.y));
   const dy = minY < topMin ? topMin - minY : 0;
   if (dy) for (const p of Object.values(pos)) p.y += dy;
@@ -359,6 +360,7 @@ function computeLayout() {
     dy,
     wbBottom: wbBottom + dy,
     lbTop: lbTop + dy,
+    cols: Object.fromEntries(rounds.map((r) => [r.key, colOf(r)])),
     width: gx + GEO.GRAND_W + GEO.PAD_X,
     height: bottom + (MODE.stream ? 20 : 44),
   };
@@ -412,12 +414,13 @@ function render() {
   for (const r of rounds) {
     if (r.bracket === "final") continue;
     if (MODE.view !== "all" && r.bracket !== MODE.view) continue;
-    const lab = h("div", "round-label", r.label);
+    const lab = h("div", "round-label");
+    lab.append(h("span", "round-no", "ROUND " + r.order), h("span", "round-name", r.label));
     place(lab, {
-      x: colX(r.col),
-      y: (r.bracket === "winners" ? GEO.WB_TOP + L.dy : L.lbTop) - 30,
+      x: colX(L.cols[r.key]),
+      y: (r.bracket === "winners" ? GEO.WB_TOP + L.dy : L.lbTop) - 42,
       w: GEO.CARD_W,
-      h: 18,
+      h: 30,
     });
     canvas.appendChild(lab);
   }
@@ -605,7 +608,9 @@ function buildMatchCard(s, p, round) {
 
   if (grand) {
     const head = h("div", "match-head");
-    head.appendChild(h("span", "match-head-title", round.label));
+    const headName = h("span", "match-head-title", round.label);
+    if (round.order) headName.appendChild(h("small", "head-round", "ROUND " + round.order));
+    head.appendChild(headName);
     const tag = s.dormant ? s.dormantReason : (s.status === "LIVE" ? "LIVE" : s.id);
     head.appendChild(h("span", "match-head-tag" + (s.status === "LIVE" ? " is-live" : ""), tag));
     card.append(head, body);

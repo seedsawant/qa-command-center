@@ -200,6 +200,8 @@ main { position: relative; padding: 8px 12px 0; }
 .round-label {
   position: absolute;
   display: flex;
+  flex-direction: column;
+  gap: 3px;
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -863,4 +865,21 @@ html.stream .chips { order: 4; margin-left: 0; }
 
 @media (max-width: 640px) {
   .announce { gap: 12px; padding: 12px 16px; max-width: calc(100vw - 24px); }
+}
+
+/* Running order of play, shown small beside each round name */
+.round-no {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  padding-left: 0.32em;
+  color: var(--accent);
+  opacity: 0.9;
+}
+.head-round {
+  margin-left: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--text-mute);
 }
