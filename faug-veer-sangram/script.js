@@ -84,14 +84,14 @@ const rounds = [
   { key: "WR16", label: "WINNERS ROUND OF 16",   bracket: "winners", col: 0 },
   { key: "WQF",  label: "WINNERS QUARTERFINALS", bracket: "winners", col: 1 },
   { key: "WSF",  label: "WINNERS SEMIFINALS",    bracket: "winners", col: 2 },
-  { key: "WF",   label: "WINNERS FINAL",         bracket: "winners", col: 3 },
+  { key: "WF",   label: "WINNERS FINAL",         bracket: "winners", col: 4 },
 
-  { key: "LR1",  label: "LOSERS ROUND 1",        bracket: "losers",  col: 0 },
-  { key: "LR2",  label: "LOSERS ROUND 2",        bracket: "losers",  col: 1 },
-  { key: "LR3",  label: "LOSERS ROUND 3",        bracket: "losers",  col: 2 },
-  { key: "LQF",  label: "LOSERS QUARTERFINAL",   bracket: "losers",  col: 3 },
-  { key: "LSF",  label: "LOSERS SEMIFINAL",      bracket: "losers",  col: 4 },
-  { key: "LF",   label: "LOSERS FINAL",          bracket: "losers",  col: 5 },
+  { key: "LR1",  label: "LOSERS ROUND 1",        bracket: "losers",  col: 1 },
+  { key: "LR2",  label: "LOSERS ROUND 2",        bracket: "losers",  col: 2 },
+  { key: "LR3",  label: "LOSERS ROUND 3",        bracket: "losers",  col: 3 },
+  { key: "LQF",  label: "LOSERS QUARTERFINAL",   bracket: "losers",  col: 4 },
+  { key: "LSF",  label: "LOSERS SEMIFINAL",      bracket: "losers",  col: 5 },
+  { key: "LF",   label: "LOSERS FINAL",          bracket: "losers",  col: 6 },
 
   { key: "GF",   label: "GRAND FINAL",           bracket: "final" },
   { key: "GFR",  label: "GRAND FINAL RESET",     bracket: "final" },
@@ -270,7 +270,7 @@ const GEO_BASE = {
   PAD_X: 28,
   CARD_W: 220,
   CARD_H: 64,
-  GAP_X: 36,           // horizontal gap between columns (connector trunks live here)
+  GAP_X: 28,           // horizontal gap between columns (connector trunks live here)
   WB_TOP: 76,          // y of first Winners Round of 16 card
   WB_PITCH: 80,
   LB_PITCH: 88,
@@ -282,7 +282,7 @@ const GEO_BASE = {
   CHAMP_H: 176,
 };
 // Tighter sizes for stream mode so a whole 16:9 frame fits without scrolling.
-const GEO_STREAM = { CARD_H: 56, WB_TOP: 56, WB_PITCH: 64, LB_GAP: 76, LB_PITCH: 70, GRAND_GAP: 36, CHAMP_H: 160 };
+const GEO_STREAM = { CARD_H: 56, WB_TOP: 56, WB_PITCH: 64, LB_GAP: 76, LB_PITCH: 70, GRAND_GAP: 36, CHAMP_H: 160, GAP_X: 22, GRAND_W: 236 };
 
 const GEO = {};
 function applyGeo() {
@@ -303,6 +303,11 @@ function computeLayout() {
 
   const wbBottom = GEO.WB_TOP + 7 * GEO.WB_PITCH + GEO.CARD_H;
   const lbTop = view === "losers" ? GEO.WB_TOP : wbBottom + GEO.LB_GAP;
+
+  // Column of a round. The half views pull their bracket in so nothing is left empty.
+  const colOf = (r) => view === "winners" ? (r.key === "WF" ? 3 : r.col)
+                     : view === "losers" ? r.col - 1
+                     : r.col;
 
   for (const m of matches) {
     const r = roundBy[m.round];
@@ -326,17 +331,21 @@ function computeLayout() {
       const pitch = r.bracket === "winners" ? GEO.WB_PITCH : GEO.LB_PITCH;
       cy = top + idx * pitch + GEO.CARD_H / 2;
     }
-    pos[m.id] = { x: colX(r.col), y: cy - GEO.CARD_H / 2, w: GEO.CARD_W, h: GEO.CARD_H };
+    pos[m.id] = { x: colX(colOf(r)), y: cy - GEO.CARD_H / 2, w: GEO.CARD_W, h: GEO.CARD_H };
   }
 
-  // Grand Final sits level with the final of the bracket on show, so that line runs
-  // dead straight. In the winners-only view it moves in next to the Winners Final.
-  const anchor = view === "losers" ? pos.L14 : pos.WF;   // L14 = Losers Final
-  const gx = colX(view === "winners" ? 4 : 6);
-  const cyGF = anchor.y + GEO.CARD_H / 2;
+  // Grand Final sits on the far right. With both brackets showing it is centred between
+  // the Winners Final and the Losers Final (L14), so one trunk line serves both.
+  // The half views put it level with the final on show.
+  const cyWF = view === "losers" ? null : pos.WF.y + GEO.CARD_H / 2;
+  const cyLF = view === "winners" ? null : pos.L14.y + GEO.CARD_H / 2;
+  const gx = colX(view === "winners" ? 4 : view === "losers" ? 6 : 7);
+  const cyGF = cyWF != null && cyLF != null ? (cyWF + cyLF) / 2 : (cyWF ?? cyLF);
   pos.GF = { x: gx, y: cyGF - GEO.GRAND_H / 2, w: GEO.GRAND_W, h: GEO.GRAND_H };
   pos.GFR = { x: gx, y: pos.GF.y + GEO.GRAND_H + GEO.GRAND_GAP, w: GEO.GRAND_W, h: GEO.GRAND_H };
-  pos.CHAMP = { x: gx, y: pos.GF.y - GEO.GRAND_GAP - GEO.CHAMP_H, w: GEO.GRAND_W, h: GEO.CHAMP_H };
+  // Champion at the top right when everything is showing; above the Grand Final otherwise.
+  const champY = view === "all" ? GEO.WB_TOP : pos.GF.y - GEO.GRAND_GAP - GEO.CHAMP_H;
+  pos.CHAMP = { x: gx, y: champY, w: GEO.GRAND_W, h: GEO.CHAMP_H };
 
   // Keep everything below the round labels; the half views can push the Champion box up.
   const topMin = GEO.WB_TOP - 36;
@@ -430,7 +439,8 @@ function render() {
       d = `M${a.x + a.w / 2},${a.y + a.h}V${b.y}`;
       cls += " conn--dashed conn--gold";
     } else {
-      const midX = b.x - GEO.GAP_X / 2;
+      const jump = b.x - (a.x + a.w);
+      const midX = lk.to !== "GF" && jump > GEO.GAP_X * 3 ? a.x + a.w + jump / 2 : b.x - GEO.GAP_X / 2;
       d = ay === by ? `M${a.x + a.w},${ay}H${b.x}` : `M${a.x + a.w},${ay}H${midX}V${by}H${b.x}`;
       if (st[lk.from].winner != null) cls += " conn--done";
       if (lk.to === "GF") cls += " conn--gold";
@@ -497,11 +507,12 @@ function sectionTitle(text, y, width) {
 /* Decorative concentric "globe" in the empty space beside the Winners Final line. */
 function buildDecor(L) {
   const g = L.pos.GF;
-  const x0 = colX(4);
+  const wf = L.pos.WF;
+  const x0 = wf.x + wf.w + GEO.GAP_X;
   const x1 = g.x - GEO.GAP_X;
   const cx = (x0 + x1) / 2;
-  const cy = g.y + g.h / 2;
-  const R = 236;
+  const cy = wf.y + wf.h / 2;
+  const R = Math.min(236, (x1 - x0) / 2 - 6);
 
   const svg = sv("svg", { class: "decor", width: L.width, height: L.height, viewBox: `0 0 ${L.width} ${L.height}`, "aria-hidden": "true" });
   const defs = sv("defs");
@@ -675,7 +686,7 @@ function buildChampion(championId, p) {
 
 function buildLegend(L) {
   const el = h("div", "legend");
-  el.style.left = colX(6) + "px";
+  el.style.left = colX(0) + "px";
   el.style.top = L.lbTop + "px";
   el.style.width = GEO.GRAND_W + "px";
   el.innerHTML =
@@ -752,7 +763,7 @@ function fit() {
     const availH = window.innerHeight - (hero ? hero.offsetHeight : 0);
     scale = Math.min(window.innerWidth / canvasSize.width, availH / canvasSize.height);
   } else if (window.innerWidth >= 1000) {
-    scale = Math.min(1.15, Math.max(0.7, vp.clientWidth / canvasSize.width));
+    scale = Math.min(1.15, Math.max(0.64, vp.clientWidth / canvasSize.width));
   }
   stage.style.width = canvasSize.width * scale + "px";
   stage.style.height = canvasSize.height * scale + "px";
