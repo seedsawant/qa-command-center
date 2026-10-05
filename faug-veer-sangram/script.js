@@ -1273,10 +1273,15 @@ function celebrate(info) {
   }
   card.appendChild(h("div", "celebrate-name", info.winnerName));
   card.appendChild(h("div", "celebrate-sub", "TOURNAMENT CHAMPIONS"));
+  const showBtn = h("button", "celebrate-btn", "SHOW LEADERBOARD");
+  showBtn.type = "button";
+  card.appendChild(showBtn);
   el.append(canvas, card);
   document.body.appendChild(el);
   CELEB.el = el;
   el.addEventListener("click", () => endCelebration());
+  CELEB.onKey = (e) => { if (e.key === "Escape") endCelebration(); };
+  document.addEventListener("keydown", CELEB.onKey);
 
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("is-in")));
   if (!reduce) CELEB.timers.push(setTimeout(() => startConfetti(canvas), CONFIG.confettiDelayMs));
@@ -1284,6 +1289,7 @@ function celebrate(info) {
 }
 
 function endCelebration(immediate) {
+  if (CELEB.onKey) { document.removeEventListener("keydown", CELEB.onKey); CELEB.onKey = null; }
   CELEB.timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
   CELEB.timers = [];
   cancelAnimationFrame(CELEB.raf);

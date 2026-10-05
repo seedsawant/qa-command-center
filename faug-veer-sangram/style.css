@@ -1000,3 +1000,24 @@ html.stream .chips { order: 4; margin-left: 0; }
 
 /* Admin bar: keep the extra button from crowding on phones */
 @media (max-width: 640px) { .admin-bar { gap: 6px; } .admin-bar .btn { padding: 9px 10px; font-size: 13px; } }
+
+/* "Show leaderboard": lets a viewer skip straight to the bracket. Hidden in the stream view. */
+.celebrate-btn {
+  margin-top: clamp(10px, 2.4vh, 30px);
+  padding: 0.8em 1.8em;
+  font: 800 clamp(14px, 1.3vw, 24px) var(--font);
+  letter-spacing: 0.3em;
+  padding-left: calc(1.8em + 0.3em);
+  color: #2b1d00;
+  background: linear-gradient(180deg, #ffe3a1, #f4c04e);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 8px 28px rgba(244, 192, 78, 0.35);
+  cursor: pointer;
+  opacity: 0;
+  animation: btn-in 0.8s ease 1.8s forwards;
+}
+.celebrate-btn:hover { filter: brightness(1.08); }
+.celebrate-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+@keyframes btn-in { to { opacity: 1; } }
+html.stream .celebrate-btn { display: none; }
