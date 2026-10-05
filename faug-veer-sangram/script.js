@@ -42,6 +42,10 @@ const CONFIG = {
   // How long the winner banner stays on screen, in milliseconds.
   announceMs: 6000,
 
+  // Champion celebration: how long it stays up, and how long before the confetti starts.
+  championMs: 22000,
+  confettiDelayMs: 2500,
+
   // Live results + admin mode (section 9). Leave both blank to run as a plain
   // static page that only shows the data in this file. Both values are public by
   // design: the anon key can only do what the database's row-level security allows.
@@ -1112,10 +1116,12 @@ function renderAdminBar() {
 
   if (LIVE.session) {
     const teamsBtn = button("Teams", "btn--ghost");
+    const testBtn = button("Test celebration", "btn--ghost");
     const out = button("Log out", "btn--ghost");
     teamsBtn.addEventListener("click", openTeamsEditor);
+    testBtn.addEventListener("click", () => celebrateDemo());
     out.addEventListener("click", () => setSession(null));
-    bar.append(h("span", "admin-tag", "ADMIN"), h("span", "admin-hint", "Click a match to edit it"), teamsBtn, out);
+    bar.append(h("span", "admin-tag", "ADMIN"), h("span", "admin-hint", "Click a match to edit it"), teamsBtn, testBtn, out);
     bar.hidden = false;
   } else if (hashParams().has("admin")) {
     const inBtn = button("Admin log in", "btn--primary");
@@ -1160,7 +1166,9 @@ function detectResults(st) {
   ANNOUNCE.prev = now;
   if (!prev) return;                              // first look: this is the baseline
   for (const m of matches) {
-    if (now[m.id] != null && now[m.id] !== prev[m.id]) enqueueBanner(resultInfo(st, m.id));
+    if (now[m.id] == null || now[m.id] === prev[m.id]) continue;
+    const info = resultInfo(st, m.id);
+    if (info.champion) celebrate(info); else enqueueBanner(info);
   }
 }
 
@@ -1230,6 +1238,148 @@ function playNextBanner() {
   }, CONFIG.announceMs);
 }
 
+/* =============================================================================
+   11. CHAMPION CELEBRATION
+   -----------------------------------------------------------------------------
+   When the final result decides a champion while the page is open: a full-screen
+   "CONGRATULATIONS" with the team name in the centre, golden rays, and, after a
+   few seconds, confetti that keeps bursting until the celebration ends
+   (CONFIG.championMs). Click anywhere to close it early. Admins can rehearse it
+   with the "Test celebration" button. Results already there at load never trigger it.
+   ============================================================================= */
+const CELEB = { el: null, raf: 0, timers: [], parts: [] };
+
+function celebrate(info) {
+  endCelebration(true);
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  const el = h("div", "celebrate");
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", "Champions");
+  el.append(h("div", "celebrate-rays"), h("div", "celebrate-glow"));
+  const canvas = document.createElement("canvas");
+  canvas.className = "celebrate-confetti";
+
+  const card = h("div", "celebrate-card");
+  card.appendChild(h("div", "celebrate-kicker", "FAUG VEER SANGRAM"));
+  card.appendChild(h("div", "celebrate-title", "CONGRATULATIONS"));
+  const t = teams[info.winnerTeam];
+  if (t && t.logo) {
+    card.appendChild(logoEl(info.winnerTeam, "logo--celebrate"));
+  } else {
+    const trophy = h("div", "celebrate-trophy");
+    trophy.innerHTML = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 10h24v14a12 12 0 0 1-24 0V10Z"/><path d="M20 14h-8c0 9 4 15 10 16M44 14h8c0 9-4 15-10 16"/><path d="M32 36v10M22 54h20M26 46h12v8H26z"/></svg>';
+    card.appendChild(trophy);
+  }
+  card.appendChild(h("div", "celebrate-name", info.winnerName));
+  card.appendChild(h("div", "celebrate-sub", "TOURNAMENT CHAMPIONS"));
+  el.append(canvas, card);
+  document.body.appendChild(el);
+  CELEB.el = el;
+  el.addEventListener("click", () => endCelebration());
+
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("is-in")));
+  if (!reduce) CELEB.timers.push(setTimeout(() => startConfetti(canvas), CONFIG.confettiDelayMs));
+  CELEB.timers.push(setTimeout(() => endCelebration(), reduce ? 9000 : CONFIG.championMs));
+}
+
+function endCelebration(immediate) {
+  CELEB.timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+  CELEB.timers = [];
+  cancelAnimationFrame(CELEB.raf);
+  CELEB.parts = [];
+  const el = CELEB.el;
+  CELEB.el = null;
+  if (!el) return;
+  if (immediate) { el.remove(); return; }
+  el.classList.remove("is-in");
+  setTimeout(() => el.remove(), 900);
+}
+
+function startConfetti(canvas) {
+  const ctx = canvas.getContext("2d");
+  let W = 0, H = 0, k = 1;
+  const fitCanvas = () => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    k = Math.max(0.6, H / 900);               // everything scales with the screen
+  };
+  fitCanvas();
+
+  const colors = ["#f4c04e", "#ffe3a1", "#2de2b5", "#ffffff", "#ff5468", "#47a7ff"];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const parts = CELEB.parts;
+  const add = (x, y, ang, speed) => {
+    if (parts.length > 900) return;
+    parts.push({
+      x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+      w: rnd(7, 14) * k, h: rnd(5, 9) * k, rot: rnd(0, 6.28), vr: rnd(-9, 9),
+      tilt: rnd(0, 6.28), vt: rnd(4, 10), color: colors[(Math.random() * colors.length) | 0],
+      round: Math.random() < 0.25, life: rnd(3.2, 5.2), age: 0,
+    });
+  };
+  const cannon = (side, n) => {                // from a bottom corner, up and across
+    for (let i = 0; i < n; i++) {
+      const ang = (side < 0 ? -Math.PI * 0.36 : -Math.PI * 0.64) + rnd(-0.38, 0.38);
+      add(side < 0 ? -10 : W + 10, H * 0.98, ang, rnd(0.95, 1.7) * H * 0.95);
+    }
+  };
+  const pop = (n) => {                         // a round burst in the upper half
+    const cx = rnd(W * 0.15, W * 0.85), cy = rnd(H * 0.15, H * 0.5);
+    for (let i = 0; i < n; i++) add(cx, cy, rnd(0, 6.28), rnd(0.15, 0.7) * H);
+  };
+
+  const scale = Math.min(1.4, Math.max(0.6, (W * H) / (1920 * 1080)));
+  const big = () => { cannon(-1, 170 * scale | 0); cannon(1, 170 * scale | 0); pop(140 * scale | 0); };
+  big();
+  let n = 0;
+  CELEB.timers.push(setInterval(() => {
+    n++;
+    if (n % 3 === 0) { cannon(-1, 85 * scale | 0); cannon(1, 85 * scale | 0); } else pop(110 * scale | 0);
+  }, 850));
+
+  let last = performance.now();
+  const tick = (now) => {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+    const g = 1250 * k, drag = Math.pow(0.42, dt);   // gravity, and air drag per second
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.age += dt;
+      if (p.age >= p.life || p.y > H + 40) { parts.splice(i, 1); continue; }
+      p.vy += g * dt; p.vx *= drag; p.vy *= drag;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.rot += p.vr * dt; p.tilt += p.vt * dt;
+      const left = p.life - p.age;
+      ctx.globalAlpha = left < 0.8 ? Math.max(0, left / 0.8) : 1;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(1, Math.abs(Math.cos(p.tilt)) * 0.9 + 0.1);   // flutter
+      ctx.fillStyle = p.color;
+      if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.h * 0.6, 0, 6.283); ctx.fill(); }
+      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    CELEB.raf = requestAnimationFrame(tick);
+  };
+  CELEB.raf = requestAnimationFrame(tick);
+  window.addEventListener("resize", fitCanvas, { once: true });
+}
+
+/* Rehearsal: uses the real champion if there is one, otherwise a named team. */
+function celebrateDemo() {
+  const { st, champion } = resolveBracket();
+  const id = champion ?? Number(Object.keys(teams).find((k) => teams[k].name) || 1);
+  const name = champion != null || teams[id]?.name ? teamLabel({ teamA: id, teamB: id }, 0) : "TEAM NAME";
+  celebrate({ id: "GF", winnerTeam: id, winnerName: name, champion: true });
+}
+
+window.Bracket.celebrate = celebrateDemo;
 window.Bracket.live = { start: startLive, refresh, snapshot, state: LIVE };
 
 /* ---- mode switching + rotation ------------------------------------------------- */
