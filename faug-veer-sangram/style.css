@@ -1023,42 +1023,21 @@ html.stream .chips { order: 4; margin-left: 0; }
 html.stream .celebrate-btn { display: none; }
 
 /* ---------------------------------------------------------------------------
-   Stream background art (stream view only; &bg=clear still removes it for overlays)
+   Stream: the FVS logo watermark replaces the globe artwork
+   The logo file is already a faint watermark. Move or resize it with the three
+   variables below. Hidden with &logo=off, and in the transparent (&bg=clear) overlay.
    --------------------------------------------------------------------------- */
 :root {
-  --stream-veil: 0.25;   /* how much to darken the art so text stays readable: 0 to 1 */
-  --logo-size: 24vw;     /* logo width (it is square) */
-  --logo-x: 82.4%;       /* where the logo sits: centred about 74% across ... */
-  --logo-y: 35%;         /* ... and about 42% down the screen */
-}   /* how much to darken the art so text stays readable: 0 to 1 */
-
-html.stream:not(.clear):not(.no-art) body {
-  background: #0b1a30 url("assets/stream-bg.jpg") center / cover no-repeat;
+  --logo-size: 24vw;   /* logo width (the file is square) */
+  --logo-x: 82.4%;     /* centred about 74% across the screen ... */
+  --logo-y: 35%;       /* ... and about 42% down */
 }
-html.stream:not(.clear) body::after {
+html.stream .decor { display: none; }
+html.stream:not(.clear):not(.no-logo) body::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  /* top layer: the logo watermark (already faint in the file) in the open space between
-     the Winners Final and the Grand Final; below it: the darkening veil over the art */
-  background:
-    var(--stream-logo, url("assets/stream-logo.webp")) no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto,
-    rgba(4, 12, 30, var(--stream-veil));
+  background: url("assets/stream-logo.webp") no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto;
 }
-html.stream.no-logo body::after { background: rgba(4, 12, 30, var(--stream-veil)); }
-/* &bgart=off: keep the original navy page and show only the logo */
-html.stream.no-art:not(.clear) body::after {
-  background: var(--stream-logo, url("assets/stream-logo.webp")) no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto;
-}
-html.stream.no-art.no-logo body::after { background: none; }
-/* the artist's logo replaces the globe artwork in the stream */
-html.stream .decor { display: none; }
-
-/* Keep small text and thin lines readable over the brighter parts of the art */
-html.stream:not(.clear) .round-label { color: #d3e1f3; text-shadow: 0 1px 8px rgba(2, 8, 22, 0.9), 0 0 2px rgba(2, 8, 22, 0.8); }
-html.stream:not(.clear) .round-no { color: #5ff0c8; opacity: 1; }
-html.stream:not(.clear) .conn { stroke: #5b92c4; }
-html.stream:not(.clear) .conn--done { stroke: var(--conn-done); }
-html.stream:not(.clear) .conn--gold { stroke: rgba(244, 192, 78, 0.8); }

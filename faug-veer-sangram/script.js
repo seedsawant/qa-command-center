@@ -256,13 +256,10 @@ function resolveBracket() {
      #stream&view=rotate      alternates winners / losers full-screen (&every=15 seconds)
      #stream&view=winners     (or losers) pin one half
      #stream&bg=clear         transparent page background, for overlays in OBS
-     #stream&veil=0.4         how much the background art is darkened (0 = none, 1 = black)
-     #stream&logo=off         hide the logo watermark in the stream
-     #stream&bgart=on         show the artist's background image behind the bracket (default: off,
-                              the original navy page with just the logo)
+     #stream&logo=off         hide the FVS logo watermark in the stream
      #admin                   shows the admin log-in (see section 9)
    Options combine with &, for example  #stream&view=rotate&bg=clear                  */
-const MODE = { stream: false, view: "all", rotate: false, every: 15, clear: false, veil: null };
+const MODE = { stream: false, view: "all", rotate: false, every: 15, clear: false };
 const hashParams = () => new URLSearchParams(location.hash.slice(1));
 
 function readMode() {
@@ -272,8 +269,6 @@ function readMode() {
   MODE.clear = p.get("bg") === "clear";
   MODE.rotate = MODE.stream && v === "rotate";
   MODE.every = Math.min(120, Math.max(5, parseInt(p.get("every"), 10) || 15));
-  const veil = parseFloat(p.get("veil"));
-  MODE.veil = Number.isFinite(veil) ? Math.min(1, Math.max(0, veil)) : null;
   MODE.view = !MODE.stream ? "all" : MODE.rotate ? "winners" : (v === "winners" || v === "losers") ? v : "all";
 }
 
@@ -1403,9 +1398,6 @@ function setupMode() {
   document.documentElement.classList.toggle("stream", MODE.stream);
   document.documentElement.classList.toggle("clear", MODE.clear);
   document.documentElement.classList.toggle("no-logo", hashParams().get("logo") === "off");
-  document.documentElement.classList.toggle("no-art", hashParams().get("bgart") !== "on");   // the background art is opt-in for now
-  if (MODE.veil == null) document.documentElement.style.removeProperty("--stream-veil");
-  else document.documentElement.style.setProperty("--stream-veil", String(MODE.veil));
   clearInterval(rotateTimer);
   if (MODE.rotate) rotateTimer = setInterval(rotateView, MODE.every * 1000);
 }
