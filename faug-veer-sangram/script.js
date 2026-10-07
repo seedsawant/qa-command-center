@@ -926,6 +926,7 @@ function setSession(s) {
   CONFIG.onMatchClick = s ? openMatchEditor : null;
   renderAdminBar();
   render();
+  if (s) pullViewerCount();
 }
 
 const toSession = (r, email) => ({
@@ -1152,7 +1153,12 @@ function renderAdminBar() {
     teamsBtn.addEventListener("click", openTeamsEditor);
     testBtn.addEventListener("click", () => celebrateDemo());
     out.addEventListener("click", () => setSession(null));
-    bar.append(h("span", "admin-tag", "ADMIN"), h("span", "admin-hint", "Click a match to edit it"), teamsBtn, testBtn, out);
+    const watching = h("span", "admin-viewers", "WATCHING ");
+    const num = h("b", null, PRESENCE.count == null ? "\u2014" : String(PRESENCE.count));
+    num.id = "viewerCount";
+    watching.appendChild(num);
+    watching.title = "People on the page right now (active in the last minute). The stream view is not counted.";
+    bar.append(h("span", "admin-tag", "ADMIN"), watching, h("span", "admin-hint", "Click a match to edit it"), teamsBtn, testBtn, out);
     bar.hidden = false;
   } else if (hashParams().has("admin")) {
     const inBtn = button("Admin log in", "btn--primary");
@@ -1175,7 +1181,8 @@ function startLive() {
   refresh().then(() => { if (LIVE.session) render(); });
   clearInterval(LIVE.timer);
   LIVE.timer = setInterval(refresh, POLL_MS);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refresh(); heartbeat(); } });
+  startPresence();
 }
 
 /* =============================================================================
@@ -1417,6 +1424,51 @@ function celebrateDemo() {
 }
 
 window.Bracket.celebrate = celebrateDemo;
+/* =============================================================================
+   12. WATCHING COUNT (admin only)
+   -----------------------------------------------------------------------------
+   Every visitor on the normal page reports in with a random anonymous id every 30
+   seconds while the tab is visible. The admin bar shows how many reported in during
+   the last 75 seconds. No names, no tracking: just a random id kept in the browser.
+   The stream view (OBS) is not counted. Needs the SQL in supabase-setup.sql.
+   ============================================================================= */
+const PRESENCE = { id: null, count: null, beatTimer: 0, countTimer: 0 };
+
+function viewerId() {
+  try {
+    let v = localStorage.getItem("fvs-viewer");
+    if (!v) { v = crypto.randomUUID(); localStorage.setItem("fvs-viewer", v); }
+    return v;
+  } catch { return crypto.randomUUID(); }
+}
+
+async function heartbeat() {
+  if (!LIVE.enabled || MODE.stream || document.hidden) return;
+  try { await sb("/rest/v1/rpc/fvs_heartbeat", { method: "POST", body: { v: PRESENCE.id } }); }
+  catch { /* count not set up, or offline: the page works either way */ }
+}
+
+async function pullViewerCount() {
+  if (!LIVE.session) return;
+  try {
+    const token = await freshToken();
+    const n = await sb("/rest/v1/rpc/fvs_viewer_count", { method: "POST", token, body: {} });
+    PRESENCE.count = typeof n === "number" ? n : null;
+  } catch { PRESENCE.count = null; }
+  const el = document.getElementById("viewerCount");
+  if (el) el.textContent = PRESENCE.count == null ? "\u2014" : String(PRESENCE.count);
+}
+
+function startPresence() {
+  PRESENCE.id = viewerId();
+  clearInterval(PRESENCE.beatTimer);
+  clearInterval(PRESENCE.countTimer);
+  heartbeat();
+  PRESENCE.beatTimer = setInterval(heartbeat, 30000);
+  PRESENCE.countTimer = setInterval(pullViewerCount, 15000);
+  pullViewerCount();
+}
+
 window.Bracket.live = { start: startLive, refresh, snapshot, state: LIVE };
 
 /* ---- mode switching + rotation ------------------------------------------------- */
