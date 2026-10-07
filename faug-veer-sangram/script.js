@@ -556,12 +556,42 @@ function buildDecor(L) {
 }
 
 /* ---- team pieces --------------------------------------------------------- */
+/* ---- logo library -----------------------------------------------------------
+   Drop a logo into assets/logos/ named after the team (lowercase, spaces and symbols
+   become dashes): "Blaze Rangers" -> assets/logos/blaze-rangers.png (or .webp .jpg
+   .jpeg .svg). When a team has a name but no logo link, the page looks there on its
+   own, so typing the team's name in the admin view is enough. A link typed in the
+   Teams editor always wins. Each name is looked up once per visit. */
+const LOGO_DIR = "assets/logos/";
+const LOGO_EXTS = ["png", "webp", "jpg", "jpeg", "svg"];
+const LOGO_CACHE = {};                       // slug -> url found, or null if there is none
+
+const logoSlug = (name) => String(name || "").toLowerCase().normalize("NFKD")
+  .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+function libraryLogo(name) {
+  const slug = logoSlug(name);
+  if (!slug) return null;
+  if (slug in LOGO_CACHE) return LOGO_CACHE[slug];
+  LOGO_CACHE[slug] = null;                   // placeholder while we look, so it only happens once
+  (function tryNext(i) {
+    if (i >= LOGO_EXTS.length) return;
+    const url = `${LOGO_DIR}${slug}.${LOGO_EXTS[i]}`;
+    const probe = new Image();
+    probe.onload = () => { LOGO_CACHE[slug] = url; render(); };
+    probe.onerror = () => tryNext(i + 1);
+    probe.src = url;
+  })(0);
+  return null;
+}
+
 function logoEl(teamId, extra = "") {
   const wrap = h("span", "logo " + extra);
   const t = teamId != null ? teams[teamId] : null;
-  if (t && t.logo) {
+  const src = t ? (t.logo || libraryLogo(t.name)) : null;
+  if (src) {
     const img = document.createElement("img");
-    img.src = t.logo;
+    img.src = src;
     img.alt = t.name || "";
     img.draggable = false;
     img.addEventListener("error", () => { img.remove(); wrap.classList.add("is-empty"); });
