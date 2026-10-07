@@ -1032,7 +1032,7 @@ html.stream .celebrate-btn { display: none; }
   --logo-y: 35%;         /* ... and about 42% down the screen */
 }   /* how much to darken the art so text stays readable: 0 to 1 */
 
-html.stream:not(.clear) body {
+html.stream:not(.clear):not(.no-art) body {
   background: #0b1a30 url("assets/stream-bg.jpg") center / cover no-repeat;
 }
 html.stream:not(.clear) body::after {
@@ -1048,6 +1048,11 @@ html.stream:not(.clear) body::after {
     rgba(4, 12, 30, var(--stream-veil));
 }
 html.stream.no-logo body::after { background: rgba(4, 12, 30, var(--stream-veil)); }
+/* &bgart=off: keep the original navy page and show only the logo */
+html.stream.no-art:not(.clear) body::after {
+  background: var(--stream-logo, url("assets/stream-logo.webp")) no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto;
+}
+html.stream.no-art.no-logo body::after { background: none; }
 /* the artist's logo replaces the globe artwork in the stream */
 html.stream .decor { display: none; }
 
