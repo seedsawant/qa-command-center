@@ -1041,3 +1041,7 @@ html.stream:not(.clear):not(.no-logo) body::after {
   pointer-events: none;
   background: url("assets/stream-logo.webp") no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto;
 }
+
+/* Admin bar: live count of people on the page */
+.admin-viewers { font-size: 13px; font-weight: 700; letter-spacing: 0.18em; color: var(--text-dim); white-space: nowrap; }
+.admin-viewers b { margin-left: 4px; font-size: 18px; letter-spacing: 0; color: var(--accent); font-variant-numeric: tabular-nums; }
