@@ -1021,3 +1021,23 @@ html.stream .chips { order: 4; margin-left: 0; }
 .celebrate-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 @keyframes btn-in { to { opacity: 1; } }
 html.stream .celebrate-btn { display: none; }
+
+/* ---------------------------------------------------------------------------
+   Stream: the FVS logo watermark replaces the globe artwork
+   The logo file is already a faint watermark. Move or resize it with the three
+   variables below. Hidden with &logo=off, and in the transparent (&bg=clear) overlay.
+   --------------------------------------------------------------------------- */
+:root {
+  --logo-size: 24vw;   /* logo width (the file is square) */
+  --logo-x: 82.4%;     /* centred about 74% across the screen ... */
+  --logo-y: 35%;       /* ... and about 42% down */
+}
+html.stream .decor { display: none; }
+html.stream:not(.clear):not(.no-logo) body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url("assets/stream-logo.webp") no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto;
+}

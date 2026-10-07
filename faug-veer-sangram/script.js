@@ -256,6 +256,7 @@ function resolveBracket() {
      #stream&view=rotate      alternates winners / losers full-screen (&every=15 seconds)
      #stream&view=winners     (or losers) pin one half
      #stream&bg=clear         transparent page background, for overlays in OBS
+     #stream&logo=off         hide the FVS logo watermark in the stream
      #admin                   shows the admin log-in (see section 9)
    Options combine with &, for example  #stream&view=rotate&bg=clear                  */
 const MODE = { stream: false, view: "all", rotate: false, every: 15, clear: false };
@@ -1396,6 +1397,7 @@ function setupMode() {
   applyGeo();
   document.documentElement.classList.toggle("stream", MODE.stream);
   document.documentElement.classList.toggle("clear", MODE.clear);
+  document.documentElement.classList.toggle("no-logo", hashParams().get("logo") === "off");
   clearInterval(rotateTimer);
   if (MODE.rotate) rotateTimer = setInterval(rotateView, MODE.every * 1000);
 }
