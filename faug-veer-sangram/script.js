@@ -257,6 +257,7 @@ function resolveBracket() {
      #stream&view=winners     (or losers) pin one half
      #stream&bg=clear         transparent page background, for overlays in OBS
      #stream&veil=0.4         how much the background art is darkened (0 = none, 1 = black)
+     #stream&logo=off         hide the logo watermark in the stream
      #admin                   shows the admin log-in (see section 9)
    Options combine with &, for example  #stream&view=rotate&bg=clear                  */
 const MODE = { stream: false, view: "all", rotate: false, every: 15, clear: false, veil: null };
@@ -1399,6 +1400,7 @@ function setupMode() {
   applyGeo();
   document.documentElement.classList.toggle("stream", MODE.stream);
   document.documentElement.classList.toggle("clear", MODE.clear);
+  document.documentElement.classList.toggle("no-logo", hashParams().get("logo") === "off");
   if (MODE.veil == null) document.documentElement.style.removeProperty("--stream-veil");
   else document.documentElement.style.setProperty("--stream-veil", String(MODE.veil));
   clearInterval(rotateTimer);

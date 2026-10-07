@@ -1025,7 +1025,12 @@ html.stream .celebrate-btn { display: none; }
 /* ---------------------------------------------------------------------------
    Stream background art (stream view only; &bg=clear still removes it for overlays)
    --------------------------------------------------------------------------- */
-:root { --stream-veil: 0.4; }   /* how much to darken the art so text stays readable: 0 to 1 */
+:root {
+  --stream-veil: 0.25;   /* how much to darken the art so text stays readable: 0 to 1 */
+  --logo-size: 24vw;     /* logo width (it is square) */
+  --logo-x: 82.4%;       /* where the logo sits: centred about 74% across ... */
+  --logo-y: 35%;         /* ... and about 42% down the screen */
+}   /* how much to darken the art so text stays readable: 0 to 1 */
 
 html.stream:not(.clear) body {
   background: #0b1a30 url("assets/stream-bg.jpg") center / cover no-repeat;
@@ -1036,8 +1041,13 @@ html.stream:not(.clear) body::after {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: rgba(4, 12, 30, var(--stream-veil));
+  /* top layer: the logo watermark (already faint in the file) in the open space between
+     the Winners Final and the Grand Final; below it: the darkening veil over the art */
+  background:
+    var(--stream-logo, url("assets/stream-logo.webp")) no-repeat var(--logo-x) var(--logo-y) / var(--logo-size) auto,
+    rgba(4, 12, 30, var(--stream-veil));
 }
+html.stream.no-logo body::after { background: rgba(4, 12, 30, var(--stream-veil)); }
 /* the artist's logo replaces the globe artwork in the stream */
 html.stream .decor { display: none; }
 
